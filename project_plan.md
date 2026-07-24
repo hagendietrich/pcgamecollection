@@ -134,3 +134,29 @@ Cover-flow / carousel using **HorizontalPager**:
 - Multi-platform imports — add a "Platforms" tab later with toggles per source.
 - Game categories / Genres / Tags from IGDB — optional detail screen in step 2.
 - Export/import via CSV/JSON — deferred until after basic CRUD is solid.
+
+---
+
+## 11. Project Plan Update Log (post-inspection)
+
+The following were discovered during file inspection and fixed directly:
+
+### ✅ Already Complete (previously inaccurate plan status)
+- **IGDB deps in libs.versions.toml**: Added `ktor`, `serializationJson` versions, and three new library entries (`ktor-client-core`, `ktor-client-cio`, `kotlinx-serialization-json`) to `libs.versions.toml` — not present in original toml despite plan assuming they were.
+- **Ktor additions to build.gradle.kts**: Added `implementation(libs.ktor.client.core)` and `implementation(libs.ktor.client.cio)` after line 47 (`coroutines`).
+
+### ✅ Fixed (were missing, now remediated)
+- `src/main/AndroidManifest.xml` — added `<uses-permission android:name="android.permission.INTERNET" />`. Plan listed this as a checklist item; it was absent and needed for IGDB HTTP calls.
+- `res/values/strings.xml` — created minimal file with `app_name` string resource referenced in manifest (`@string/app_name`).
+- `build.gradle.kts` compileSdk DSL → replaced invalid nested braces syntax (`compileSdk { version = release(36) ... }`) with standard `compileSdk = 34`.
+- Note: Coil is declared as `2.7.0` (Coil 2 / `io.coil-kt:coil-compose`), **not** `5.0.0` as the plan stated — the two major versions are different artifacts and coil-compose version ≥6 would be incompatible with this AGP/kotlin setup.
+
+### 📋 Pending (now re-scheduled)
+| Item | Plan Step# | Priority |
+|---|---|---|
+| Create `MainApp.kt` — Application class + InMemory DB + shared ViewModel factory | Data Layer (#2) | High — blocks all ViewModels |
+| Write IGDB API layer: `IgdbGameModel.kt`, `IgdbClient.kt` | API Service (#3) | Medium |
+| Write `GameRepository.kt` with caching + sealed `GameSource` | Repository (#4) | Medium — data pipeline complete step |
+| Create 3 UI screens (`AddGameScreen`, `GameListScreen`, navigation) | UI screens (#5-7) | Low — needs all above first |
+
+---
