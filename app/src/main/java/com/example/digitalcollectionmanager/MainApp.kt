@@ -1,6 +1,10 @@
 package com.example.digitalcollectionmanager
 
 import android.app.Application
+import android.content.Context
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.preferencesDataStore
 import androidx.room.Room
 import com.example.digitalcollectionmanager.data.database.AppDatabase
 
@@ -9,6 +13,8 @@ import com.example.digitalcollectionmanager.data.database.AppDatabase
  * The database is created when the application starts and stored as a property that can
  * be accessed by ViewModels or any other component via `App.instance().database`.
  */
+val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
+
 class App : Application() {
     companion object {
         private var _instance: App? = null

@@ -23,4 +23,7 @@ interface GameDao {
 
     @Query("SELECT * FROM games WHERE id = :id")
     suspend fun getGameById(id: Int): Game?
+
+    @Query("SELECT * FROM games WHERE title = :title LIMIT 1")
+    suspend fun getGameByTitle(title: String): Game?
 }

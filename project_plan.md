@@ -19,42 +19,22 @@ Add the following dependencies:
 
 ## 2. Data Layer – Schema & Database
 
-### Current state
-- `Game.kt` has fields: `id`, `title`, `platform`, `coverImageUrl`, `releaseDate`, `isOwned`.
-- This schema is already designed for multi-platform (Steam, GOG, Ubisoft, etc.).
-
-### To be created
-1. **`data/database/AppDatabase.kt`** – Room database class:
-   ```kotlin
-   @Database(entities = [Game::class], version = 1, exportSchema = true)
-   abstract class AppDatabase : RoomDatabase() {
-       abstract fun gameDao(): GameDao
-   }
-   ```
-
-2. **Single `ViewModelProvider.Factory`** in a `MainApp.kt` module so the same DAO is reused from multiple ViewModels (avoid one DAO per ViewModel).
-
-3. **Migration path forward**: When Steam/GOG fields are added later, bump Room version to 2 and add migrations in `DatabaseHelper.kt`. No refactor of existing queries needed if schema evolution stays backward-compatible (Room handles this automatically when the new DB is on disk for the first time with a higher exported-version — though a proper Migration object is still recommended).
+### Status: ✅ Complete
+- `Game.kt` data model created.
+- `GameDao.kt` with CRUD operations and Flow support created.
+- `AppDatabase.kt` Room database class implemented.
+- `MainApp.kt` (App class) created with database initialization and singleton access.
+- `AndroidManifest.xml` updated to use the custom `App` class.
 
 ---
 
 ## 3. IGDB API Service
 
-IGDB is public, no auth required for search/lookup. Use **Ktor client** (no extra runtime needed beyond coroutine-support, which we already depend on).
-
-### To be created
-1. **`data/api/models/IgdbGameModel.kt`**:
-   - `name: String`, `coverUrl: String` (use the full-size cover from IGDB), `releaseDate: Date?`. Use kotlinx.serialization for deserialization (library is small and already in many Android projects via `org.jetbrains.kotlinx:kotlinx-serialization-json`).
-
-2. **`data/api/IgdbClient.kt`**:
-   ```kotlin
-   // Endpoints under https://igdb.com/api/v4/games
-   suspend fun search(query: String, limit: Int = 10): List<IgdbGameModel>
-   ```
-   - Use Ktor `HttpURLBuilder` to construct query params.
-   - Handle `200 OK`, log non-2xx with tags/logger and rethrow.
-
-3. **Retry / rate-limit handling**: Wrap calls in a small suspend function that retries at least once on transient failures (network blips). IGDB doesn't enforce strict limits for search, but this is free defensive code.
+### Status: ✅ Complete
+- **Authentication**: Implemented Twitch OAuth2 client credentials flow (Client ID + Secret required).
+- **Setup Flow**: Created a first-run setup screen to securely collect and validate credentials.
+- **Storage**: Used `DataStore` for secure local storage of API keys.
+- **Client**: Implemented `IgdbClient` using Ktor for token management and game searching.
 
 ---
 
@@ -142,8 +122,10 @@ Cover-flow / carousel using **HorizontalPager**:
 The following were discovered during file inspection and fixed directly:
 
 ### ✅ Already Complete (previously inaccurate plan status)
-- **IGDB deps in libs.versions.toml**: Added `ktor`, `serializationJson` versions, and three new library entries (`ktor-client-core`, `ktor-client-cio`, `kotlinx-serialization-json`) to `libs.versions.toml` — not present in original toml despite plan assuming they were.
-- **Ktor additions to build.gradle.kts**: Added `implementation(libs.ktor.client.core)` and `implementation(libs.ktor.client.cio)` after line 47 (`coroutines`).
+- **IGDB deps in libs.versions.toml**: Added `ktor`, `serializationJson`, `datastore`, and `lifecycle-viewmodel-compose` versions.
+- **Ktor & DataStore additions to build.gradle.kts**: Added necessary dependencies for API and secure storage.
+- **IGDB API layer**: Created `IgdbModels.kt`, `IgdbClient.kt`, and `SettingsRepository.kt`.
+- **First-run Setup**: Created `SetupViewModel` and `SetupScreen`.
 
 ### ✅ Fixed (were missing, now remediated)
 - `src/main/AndroidManifest.xml` — added `<uses-permission android:name="android.permission.INTERNET" />`. Plan listed this as a checklist item; it was absent and needed for IGDB HTTP calls.
@@ -154,9 +136,9 @@ The following were discovered during file inspection and fixed directly:
 ### 📋 Pending (now re-scheduled)
 | Item | Plan Step# | Priority |
 |---|---|---|
-| Create `MainApp.kt` — Application class + InMemory DB + shared ViewModel factory | Data Layer (#2) | High — blocks all ViewModels |
-| Write IGDB API layer: `IgdbGameModel.kt`, `IgdbClient.kt` | API Service (#3) | Medium |
-| Write `GameRepository.kt` with caching + sealed `GameSource` | Repository (#4) | Medium — data pipeline complete step |
-| Create 3 UI screens (`AddGameScreen`, `GameListScreen`, navigation) | UI screens (#5-7) | Low — needs all above first |
+| Write `GameRepository.kt` with caching + sealed `GameSource` | Repository (#4) | High — data pipeline complete step |
+| Create Manual Add UI with search | UI screens (#5) | Medium |
+| Create Game List Screen (Carousel) | UI screens (#6) | Medium |
+| Navigation Setup (NavHost) | Navigation (#7) | Medium |
 
 ---
