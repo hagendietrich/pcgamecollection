@@ -6,14 +6,15 @@ junitVersion = "1.3.0"
 espressoCore = "3.7.0"
 lifecycleRuntimeKtx = "2.6.1"
 activityCompose = "1.13.0"
-kotlin = "2.2.10"
+kotlin = "2.1.10"
 composeBom = "2026.06.01"
-room = "2.6.1"
+room = "2.7.0-alpha13"
 coroutines = "1.9.0"
 coil = "2.7.0"
 ktor = "3.2.1"
 serializationJson = "1.8.0"
 datastore = "1.1.2"
+ksp = "2.1.10-1.0.30"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -49,3 +50,5 @@ kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }

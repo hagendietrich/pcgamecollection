@@ -11,5 +11,7 @@ data class Game(
     val platform: String, // e.g., "Steam", "GOG"
     val coverImageUrl: String?,
     val releaseDate: String? = null,
-    val isOwned: Boolean = true
+    val isOwned: Boolean = true,
+    val externalId: Long? = null, // ID from IGDB, Steam, etc.
+    val source: String = "MANUAL" // Origin: IGDB, STEAM, etc.
 )

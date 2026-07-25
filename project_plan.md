@@ -20,8 +20,8 @@ Add the following dependencies:
 ## 2. Data Layer – Schema & Database
 
 ### Status: ✅ Complete
-- `Game.kt` data model created.
-- `GameDao.kt` with CRUD operations and Flow support created.
+- `Game.kt` data model created (includes `externalId` and `source` for duplicate prevention).
+- `GameDao.kt` with CRUD operations, Flow support, and external ID lookups created.
 - `AppDatabase.kt` Room database class implemented.
 - `MainApp.kt` (App class) created with database initialization and singleton access.
 - `AndroidManifest.xml` updated to use the custom `App` class.
@@ -41,15 +41,12 @@ Add the following dependencies:
 ## 4. Repository (`data/repository/GameRepository.kt`)
 One place that wires data source → cache together:
 
-- `searchGame(title: String): Flow<IgdbGameModel?>` — observes a single game (single-entry Flow via `StateFlow` + coroutine `runBlocking` or collect-as-flow pattern). Cache the last result after successful fetch.
+- `searchGames(query: String): List<IgdbGame>` — Fetches credentials from `SettingsRepository`, authenticates with `IgdbClient`, and returns results.
 - `addGame(game: Game)` / `getAllGames(): Flow<List<Game>>` delegate to DAO.
 
-### Future-proofing
-Define an enum sealed class for data sources so a new backend is just adding a case, not rewriting logic:
-```kotlin
-sealed interface GameSource { IGDB ; // GOG/Steam/etc added later }
-```
-The repository method `getGamesFrom(source: GameSource)` branches to the right implementation.
+### Status: ✅ Complete
+- `GameSource.kt` enum created with support for manual, IGDB, Steam, GOG, etc.
+- `GameRepository.kt` implemented with dependencies on `GameDao`, `IgdbClient`, and `SettingsRepository`.
 
 ---
 
@@ -59,23 +56,37 @@ Compose screen with three fields, one big "Add" button:
 - **Cover URL preview** below the form — shows download progress while fetching from IGDB.
 - **Release date** — populated automatically from API result, not editable manually (for now).
 
-### UX details
-- Button disabled until search returns a result.
-- Show a toast/snackbar with "Game added" after success.
-- Use `rememberCoroutineScope` to launch the fetch without exposing coroutine leaks on screen disposal.
+### Status: ✅ Complete
+- `AddGameViewModel.kt` implemented with search and add logic.
+- `AddGameScreen.kt` created with IGDB search results list.
+- `MainActivity.kt` updated with navigation to Add Game screen.
 
 ---
 
 ## 6. UI – Game List Screen (`ui/screens/GameListScreen.kt`)
-Cover-flow / carousel using **HorizontalPager**:
-- Pager page = single game card with cover image (loaded via Coil, placeholder while loading).
-- Swipe between games; show title below the cover.
-- Long-press a game to remove it (or use a floating action button "Remove" on each item).
-- Click/tap a game could open a detail screen or just expand into info for now.
+Vertical grid of game covers:
+- **Layout**: `LazyVerticalGrid` with adjustable 2 to 5 columns.
+- **Minimal Spacing**: Padding between items set to 2dp for a "wall of covers" look.
+- **Interaction**:
+    - **Tap**: Opens a `ModalBottomSheet` with full info (summary, platform, release date).
+    - **Density Control**: [+] and [-] buttons in the top bar to vary cover size.
+    - **Removal**: Option to delete the game from the detail bottom sheet.
+
+### Status: ✅ Complete
+- `GameListViewModel.kt` implemented with games Flow and column count management.
+- `GameListScreen.kt` implemented with a dynamic grid and a detail bottom sheet.
+- `GameRepository.kt` updated with `deleteGame` functionality.
+- `MainActivity.kt` updated to use the real library screen.
 
 ---
 
 ## 7. Main Activity + Navigation (`ui/navigation/MainNavigation.kt`)
+- `MainActivity` → host a `NavHost` (Jetpack Compose Navigation).
+- Bottom navigation with two tabs: "My Games" and "Add Game".
+
+### Status: 📋 Pending
+- Replace manual `when(screen)` logic with `NavHost`.
+- Implement a proper `BottomNavigation` bar.
 - `MainActivity` → host a `NavHost` (Jetpack Compose Navigation).
 - Bottom navigation with two tabs: "My Games" and "Add Game".
 
@@ -122,10 +133,14 @@ Cover-flow / carousel using **HorizontalPager**:
 The following were discovered during file inspection and fixed directly:
 
 ### ✅ Already Complete (previously inaccurate plan status)
-- **IGDB deps in libs.versions.toml**: Added `ktor`, `serializationJson`, `datastore`, and `lifecycle-viewmodel-compose` versions.
+- **IGDB deps in libs.versions.toml**: Added `ktor`, `serializationJson`, `datastore`, `ksp`, and `lifecycle-viewmodel-compose` versions.
+- **Gradle Plugins**: Applied `kotlin-serialization` and `ksp` for Room and API support.
 - **Ktor & DataStore additions to build.gradle.kts**: Added necessary dependencies for API and secure storage.
 - **IGDB API layer**: Created `IgdbModels.kt`, `IgdbClient.kt`, and `SettingsRepository.kt`.
 - **First-run Setup**: Created `SetupViewModel` and `SetupScreen`.
+- **Repository**: Created `GameRepository.kt` and `GameSource.kt`.
+- **Add Game UI**: Created `AddGameViewModel.kt` and `AddGameScreen.kt`.
+- **Library UI**: Created `GameListViewModel.kt` and `GameListScreen.kt` with adjustable grid density.
 
 ### ✅ Fixed (were missing, now remediated)
 - `src/main/AndroidManifest.xml` — added `<uses-permission android:name="android.permission.INTERNET" />`. Plan listed this as a checklist item; it was absent and needed for IGDB HTTP calls.
@@ -136,9 +151,7 @@ The following were discovered during file inspection and fixed directly:
 ### 📋 Pending (now re-scheduled)
 | Item | Plan Step# | Priority |
 |---|---|---|
-| Write `GameRepository.kt` with caching + sealed `GameSource` | Repository (#4) | High — data pipeline complete step |
-| Create Manual Add UI with search | UI screens (#5) | Medium |
-| Create Game List Screen (Carousel) | UI screens (#6) | Medium |
-| Navigation Setup (NavHost) | Navigation (#7) | Medium |
+| Navigation Setup (NavHost + Bottom Bar) | Navigation (#7) | High |
+| Platform filtering / Steam / GOG | Step 2 | Future |
 
 ---
