@@ -15,7 +15,14 @@ data class IgdbGame(
     val id: Long,
     val name: String,
     @SerialName("first_release_date") val firstReleaseDate: Long? = null,
-    val cover: IgdbCover? = null
+    val cover: IgdbCover? = null,
+    val genres: List<IgdbGenre>? = null
+)
+
+@Serializable
+data class IgdbGenre(
+    val id: Long,
+    val name: String
 )
 
 @Serializable

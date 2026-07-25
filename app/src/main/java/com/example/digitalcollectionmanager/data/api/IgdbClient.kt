@@ -44,7 +44,7 @@ class IgdbClient {
             client.post("https://api.igdb.com/v4/games") {
                 header("Client-ID", clientId)
                 header("Authorization", "Bearer $token")
-                setBody("search \"$query\"; fields name, first_release_date, cover.url; limit 20;")
+                setBody("search \"$query\"; fields name, first_release_date, cover.url, genres.name; limit 20;")
             }.body()
         } catch (e: Exception) {
             e.printStackTrace()

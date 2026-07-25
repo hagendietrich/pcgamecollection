@@ -2,10 +2,12 @@ package com.example.digitalcollectionmanager.data.database
 
 import androidx.room.Database
 import androidx.room.RoomDatabase
+import androidx.room.TypeConverters
 import com.example.digitalcollectionmanager.data.dao.GameDao
 import com.example.digitalcollectionmanager.data.model.Game
 
-@Database(entities = [Game::class], version = 2, exportSchema = true)
+@Database(entities = [Game::class], version = 3, exportSchema = true)
+@TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun gameDao(): GameDao
 }

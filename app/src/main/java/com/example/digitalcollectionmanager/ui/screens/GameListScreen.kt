@@ -153,6 +153,13 @@ fun GameDetailContent(
                 style = MaterialTheme.typography.bodyMedium
             )
         }
+        if (game.genres.isNotEmpty()) {
+            Text(
+                text = "Genres: ${game.genres.joinToString(", ")}",
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(top = 8.dp)
+            )
+        }
         Spacer(modifier = Modifier.height(32.dp))
         Button(
             onClick = onDelete,

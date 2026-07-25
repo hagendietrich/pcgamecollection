@@ -62,7 +62,8 @@ class AddGameViewModel(
                 releaseDate = igdbGame.firstReleaseDate?.let { formatTimestamp(it) },
                 isOwned = true,
                 externalId = igdbGame.id,
-                source = GameSource.IGDB.name
+                source = GameSource.IGDB.name,
+                genres = igdbGame.genres?.map { it.name } ?: emptyList()
             )
             gameRepository.addGame(game)
             
