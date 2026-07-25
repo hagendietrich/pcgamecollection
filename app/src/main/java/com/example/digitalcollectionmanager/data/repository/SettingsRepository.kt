@@ -3,6 +3,7 @@ package com.example.digitalcollectionmanager.data.repository
 import android.content.Context
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
+import com.example.digitalcollectionmanager.data.model.SortOrder
 import com.example.digitalcollectionmanager.dataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -13,6 +14,7 @@ class SettingsRepository(private val context: Context) {
         val CLIENT_ID = stringPreferencesKey("igdb_client_id")
         val CLIENT_SECRET = stringPreferencesKey("igdb_client_secret")
         val COLUMN_COUNT = androidx.datastore.preferences.core.intPreferencesKey("column_count")
+        val SORT_ORDER = stringPreferencesKey("sort_order")
     }
 
     val columnCount: Flow<Int> = context.dataStore.data.map { preferences ->
@@ -22,6 +24,21 @@ class SettingsRepository(private val context: Context) {
     suspend fun updateColumnCount(count: Int) {
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.COLUMN_COUNT] = count.coerceIn(2, 5) // Keep it between 2 and 5
+        }
+    }
+
+    val sortOrder: Flow<SortOrder> = context.dataStore.data.map { preferences ->
+        val orderName = preferences[PreferencesKeys.SORT_ORDER] ?: SortOrder.TITLE_ASC.name
+        try {
+            SortOrder.valueOf(orderName)
+        } catch (e: Exception) {
+            SortOrder.TITLE_ASC
+        }
+    }
+
+    suspend fun updateSortOrder(order: SortOrder) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.SORT_ORDER] = order.name
         }
     }
 

@@ -147,7 +147,6 @@ The following were discovered during file inspection and fixed directly:
 ### 📋 Pending (now re-scheduled)
 | Item | Plan Step# | Priority |
 |---|---|---|
-| Navigation Setup (NavHost + Bottom Bar) | Navigation (#7) | High |
 | Platform filtering / Steam / GOG | Step 2 | Future |
 
 ---

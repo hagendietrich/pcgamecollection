@@ -10,6 +10,10 @@
     <string name="add_game_idle">Search for a game to add it to your collection.</string>
     <string name="add_game_empty">No games found.</string>
     <string name="add_game_success">Added %1$s to library</string>
+    <string name="sort_title">Sort</string>
+    <string name="sort_by_title">Title (A-Z)</string>
+    <string name="sort_by_date_asc">Release Date (Oldest)</string>
+    <string name="sort_by_date_desc">Release Date (Newest)</string>
     <string name="detail_remove">Remove from Collection</string>
     <string name="detail_platform">Platform: %1$s</string>
     <string name="detail_released">Released: %1$s</string>
