@@ -1,3 +1,26 @@
 <resources>
     <string name="app_name">Digital Collection Manager</string>
+    <string name="menu_my_games">My Games</string>
+    <string name="menu_add_game">Add Game</string>
+    <string name="menu_settings">Settings (IGDB)</string>
+    <string name="library_title">My Collection</string>
+    <string name="library_empty">Your collection is empty. Tap + to add games!</string>
+    <string name="add_game_title">Add New Game</string>
+    <string name="add_game_search_hint">Search Games</string>
+    <string name="add_game_idle">Search for a game to add it to your collection.</string>
+    <string name="add_game_empty">No games found.</string>
+    <string name="add_game_success">Added %1$s to library</string>
+    <string name="detail_remove">Remove from Collection</string>
+    <string name="detail_platform">Platform: %1$s</string>
+    <string name="detail_released">Released: %1$s</string>
+    <string name="detail_genres">Genres: %1$s</string>
+    <string name="setup_welcome">Welcome to Digital Collection Manager</string>
+    <string name="setup_update">Update Credentials</string>
+    <string name="setup_instruction">To search for games, you need to provide your IGDB API credentials (from Twitch Developer Portal).</string>
+    <string name="setup_client_id">Client ID</string>
+    <string name="setup_client_secret">Client Secret</string>
+    <string name="setup_connect">Connect to IGDB</string>
+    <string name="setup_save">Save Changes</string>
+    <string name="setup_error_empty">Please enter both Client ID and Client Secret</string>
+    <string name="setup_error_invalid">Invalid credentials. Please check your Client ID and Secret.</string>
 </resources>

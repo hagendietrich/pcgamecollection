@@ -15,25 +15,29 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import androidx.compose.ui.res.stringResource
+import com.example.digitalcollectionmanager.R
 import com.example.digitalcollectionmanager.data.api.models.IgdbGame
+import com.example.digitalcollectionmanager.ui.components.AppTopBar
 import com.example.digitalcollectionmanager.ui.theme.DigitalCollectionManagerTheme
 import com.example.digitalcollectionmanager.ui.viewmodel.AddGameUiState
 import com.example.digitalcollectionmanager.ui.viewmodel.AddGameViewModel
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddGameScreen(
     viewModel: AddGameViewModel,
+    onNavigate: (String) -> Unit,
     onBack: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val addedGameIds by viewModel.addedGameIds.collectAsState()
     val snackbarMessage by viewModel.snackbarMessage.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
+    val context = androidx.compose.ui.platform.LocalContext.current
 
     LaunchedEffect(snackbarMessage) {
-        snackbarMessage?.let {
-            snackbarHostState.showSnackbar(it)
+        snackbarMessage?.let { gameName ->
+            snackbarHostState.showSnackbar(context.getString(R.string.add_game_success, gameName))
             viewModel.clearSnackbar()
         }
     }
@@ -44,7 +48,8 @@ fun AddGameScreen(
         snackbarHostState = snackbarHostState,
         onSearch = { viewModel.searchGames(it) },
         onAdd = { viewModel.addGame(it) },
-        onBack = onBack
+        onBack = onBack,
+        onNavigate = onNavigate
     )
 }
 
@@ -56,20 +61,17 @@ fun AddGameContent(
     snackbarHostState: SnackbarHostState,
     onSearch: (String) -> Unit,
     onAdd: (IgdbGame) -> Unit,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onNavigate: (String) -> Unit
 ) {
     var searchQuery by remember { mutableStateOf("") }
 
     Scaffold(
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         topBar = {
-            TopAppBar(
-                title = { Text("Add New Game") },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Text("<") 
-                    }
-                }
+            AppTopBar(
+                title = stringResource(R.string.add_game_title),
+                onNavigate = onNavigate
             )
         }
     ) { innerPadding ->
@@ -82,7 +84,7 @@ fun AddGameContent(
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
-                label = { Text("Search Games") },
+                label = { Text(stringResource(R.string.add_game_search_hint)) },
                 modifier = Modifier.fillMaxWidth(),
                 trailingIcon = {
                     IconButton(onClick = { onSearch(searchQuery) }) {
@@ -97,7 +99,7 @@ fun AddGameContent(
             when (val state = uiState) {
                 is AddGameUiState.Idle -> {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text("Search for a game to add it to your collection.")
+                        Text(stringResource(R.string.add_game_idle))
                     }
                 }
                 is AddGameUiState.Loading -> {
@@ -107,7 +109,7 @@ fun AddGameContent(
                 }
                 is AddGameUiState.Empty -> {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text("No games found.")
+                        Text(stringResource(R.string.add_game_empty))
                     }
                 }
                 is AddGameUiState.Error -> {
@@ -203,7 +205,8 @@ fun AddGameScreenPreview() {
             snackbarHostState = remember { SnackbarHostState() },
             onSearch = {},
             onAdd = {},
-            onBack = {}
+            onBack = {},
+            onNavigate = {}
         )
     }
 }

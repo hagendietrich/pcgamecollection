@@ -14,7 +14,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import androidx.compose.ui.res.stringResource
+import com.example.digitalcollectionmanager.R
 import com.example.digitalcollectionmanager.data.model.Game
+import com.example.digitalcollectionmanager.ui.components.AppTopBar
 import com.example.digitalcollectionmanager.ui.theme.DigitalCollectionManagerTheme
 import com.example.digitalcollectionmanager.ui.viewmodel.GameListViewModel
 
@@ -22,6 +25,7 @@ import com.example.digitalcollectionmanager.ui.viewmodel.GameListViewModel
 @Composable
 fun GameListScreen(
     viewModel: GameListViewModel,
+    onNavigate: (String) -> Unit,
     onAddGame: () -> Unit
 ) {
     val games by viewModel.games.collectAsState()
@@ -32,8 +36,9 @@ fun GameListScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("My Collection") },
+            AppTopBar(
+                title = stringResource(R.string.library_title),
+                onNavigate = onNavigate,
                 actions = {
                     IconButton(onClick = { viewModel.setColumnCount((columnCount - 1).coerceAtLeast(2)) }) {
                         Text("-", style = MaterialTheme.typography.headlineMedium)
@@ -57,7 +62,7 @@ fun GameListScreen(
                     .padding(innerPadding),
                 contentAlignment = Alignment.Center
             ) {
-                Text("Your collection is empty. Tap + to add games!")
+                Text(stringResource(R.string.library_empty))
             }
         } else {
             LazyVerticalGrid(
@@ -144,18 +149,18 @@ fun GameDetailContent(
             fontWeight = FontWeight.Bold
         )
         Text(
-            text = "Platform: ${game.platform}",
+            text = stringResource(R.string.detail_platform, game.platform),
             style = MaterialTheme.typography.bodyMedium
         )
         game.releaseDate?.let {
             Text(
-                text = "Released: $it",
+                text = stringResource(R.string.detail_released, it),
                 style = MaterialTheme.typography.bodyMedium
             )
         }
         if (game.genres.isNotEmpty()) {
             Text(
-                text = "Genres: ${game.genres.joinToString(", ")}",
+                text = stringResource(R.string.detail_genres, game.genres.joinToString(", ")),
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.padding(top = 8.dp)
             )
@@ -166,7 +171,7 @@ fun GameDetailContent(
             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text("Remove from Collection")
+            Text(stringResource(R.string.detail_remove))
         }
         Spacer(modifier = Modifier.height(16.dp))
     }

@@ -24,6 +24,7 @@ class AddGameViewModel(
     val addedGameIds: StateFlow<Set<Long>> = _addedGameIds.asStateFlow()
 
     private val _snackbarMessage = MutableStateFlow<String?>(null)
+    /** Stores only the game name for success messages to allow UI translation */
     val snackbarMessage: StateFlow<String?> = _snackbarMessage.asStateFlow()
 
     fun searchGames(query: String) {
@@ -69,7 +70,7 @@ class AddGameViewModel(
             
             // Update tracking state
             _addedGameIds.value += igdbGame.id
-            _snackbarMessage.value = "Added ${igdbGame.name} to library"
+            _snackbarMessage.value = igdbGame.name
         }
     }
 

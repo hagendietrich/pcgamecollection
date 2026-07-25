@@ -82,40 +82,36 @@ Vertical grid of game covers:
 
 ## 7. Main Activity + Navigation (`ui/navigation/MainNavigation.kt`)
 - `MainActivity` → host a `NavHost` (Jetpack Compose Navigation).
-- Bottom navigation with two tabs: "My Games" and "Add Game".
+- Navigation managed via **Top App Bar Menu** (Dropdown):
+    - **My Games**: The main library grid.
+    - **Add Game**: Search and add from IGDB.
+    - **Settings**: Update IGDB/Twitch credentials.
 
-### Status: 📋 Pending
-- Replace manual `when(screen)` logic with `NavHost`.
-- Implement a proper `BottomNavigation` bar.
-- `MainActivity` → host a `NavHost` (Jetpack Compose Navigation).
-- Bottom navigation with two tabs: "My Games" and "Add Game".
-
----
-
-## 8. Build & Run Checklist
-- [ ] Update gradle libs in `.gradle/versionsCatalog.xml` or `build.gradle.kts` (check if using version catalog)
-- [ ] Add Room + Coil + Ktor dependencies to app module
-- [ ] Add network permission (`android.permission.INTERNET`) in manifest — check already present, add if missing
-- [ ] Create `MainApp.kt` with InMemoryAppDatabase for testing during dev (no need for files dir)
-- [ ] Get IGDB API actually returning data from `MainActivity` by running the app, typing a known game like "Stardew Valley", and verify cover + date appear in Room.
+### Status: ✅ Complete
+- Proper `NavHost` implemented with defined routes.
+- `AppTopBar` created with a global navigation menu.
+- `SetupScreen` updated to function as a settings page.
+- Full localization support (English & German) implemented.
 
 ---
 
-## 9. Files to Create / Modify Summary
+## 9. Project Files Summary
 
-| File | Action | Purpose |
+| File | Status | Purpose |
 |-------|--------|---------|
-| `app/build.gradle.kts` | **Modify** | Add Room, Coil, Ktor deps |
-| `gradle/libs.versions.toml` (or versionsCatalog.xml) | **Check** | Pin exact library versions |
-| `src/main/AndroidManifest.xml` | **Verify** | INTERNET permission present |
-| `data/database/AppDatabase.kt` | **Create** | Room DB instantiation |
-| `data/api/models/*.kt` | **Create** | IGDB response models |
-| `data/api/IgdbClient.kt` | **Create** | HTTP client for IGDB search |
-| `data/repository/GameRepository.kt` | **Create** | Business logic + caching |
-| `MainApp.kt` (module) | **Create** | Application class + DI setup |
-| `ui/screens/AddGameScreen.kt` | **Create** | Manual add UI with IGDB search |
-| `ui/screens/GameListScreen.kt` | **Create** | Carousel / cover flow of stored games |
-| `ui/navigation/MainNavigation.kt` | **Create** | NavHost + bottom nav |
+| `app/build.gradle.kts` | ✅ Modified | Added Room, Coil, Ktor, DataStore deps |
+| `gradle/libs.versions.toml` | ✅ Modified | Version catalog for all libraries |
+| `src/main/AndroidManifest.xml` | ✅ Modified | Added INTERNET permission & custom App class |
+| `data/database/AppDatabase.kt` | ✅ Created | Room DB configuration |
+| `data/database/Converters.kt` | ✅ Created | TypeConverters for List<String> storage |
+| `data/api/models/IgdbModels.kt` | ✅ Created | IGDB API request/response models |
+| `data/api/IgdbClient.kt` | ✅ Created | Ktor HTTP client for IGDB/Twitch API |
+| `data/repository/GameRepository.kt` | ✅ Created | Mediator for Game data |
+| `data/repository/SettingsRepository.kt` | ✅ Created | Secure credential storage via DataStore |
+| `MainApp.kt` | ✅ Created | Application class & Singleton provider |
+| `ui/screens/AddGameScreen.kt` | ✅ Created | Search & manual add UI |
+| `ui/screens/GameListScreen.kt` | ✅ Created | Grid-based library with adjustable density |
+| `ui/screens/SetupScreen.kt` | ✅ Created | Credential entry UI |
 
 ---
 

@@ -1,0 +1,26 @@
+<resources>
+    <string name="app_name">Digital Collection Manager</string>
+    <string name="menu_my_games">Meine Spiele</string>
+    <string name="menu_add_game">Spiel hinzufügen</string>
+    <string name="menu_settings">Einstellungen (IGDB)</string>
+    <string name="library_title">Meine Sammlung</string>
+    <string name="library_empty">Deine Sammlung ist leer. Tippe auf +, um Spiele hinzuzufügen!</string>
+    <string name="add_game_title">Neues Spiel hinzufügen</string>
+    <string name="add_game_search_hint">Spiele suchen</string>
+    <string name="add_game_idle">Suche nach einem Spiel, um es deiner Sammlung hinzuzufügen.</string>
+    <string name="add_game_empty">Keine Spiele gefunden.</string>
+    <string name="add_game_success">%1$s zur Sammlung hinzugefügt</string>
+    <string name="detail_remove">Aus Sammlung entfernen</string>
+    <string name="detail_platform">Plattform: %1$s</string>
+    <string name="detail_released">Veröffentlicht: %1$s</string>
+    <string name="detail_genres">Genres: %1$s</string>
+    <string name="setup_welcome">Willkommen zum Manager deiner Spielesammlung</string>
+    <string name="setup_update">Zugangsdaten aktualisieren</string>
+    <string name="setup_instruction">Um nach Spielen zu suchen, musst du deine IGDB-API-Zugangsdaten angeben (vom Twitch Developer Portal).</string>
+    <string name="setup_client_id">Client-ID</string>
+    <string name="setup_client_secret">Client-Secret</string>
+    <string name="setup_connect">Mit IGDB verbinden</string>
+    <string name="setup_save">Änderungen speichern</string>
+    <string name="setup_error_empty">Bitte gib sowohl die Client-ID als auch das Client-Secret ein</string>
+    <string name="setup_error_invalid">Ungültige Zugangsdaten. Bitte überprüfe deine Client-ID und dein Secret.</string>
+</resources>
