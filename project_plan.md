@@ -111,6 +111,8 @@ Vertical grid of game covers:
         - **Grouping**: Toggle in the top bar to "Group by Status" or "Group by Label" with sticky headers.
 - **Sorting**: Add `PLAYTIME_DESC` and `PLAYTIME_ASC` to `SortOrder`.
 
+**Status**: ✅ Complete — Playtime picker, status management, grouping, and multi-select implemented.
+
 ---
 
 ## 9. Feature – GOG & Steam Profile Import

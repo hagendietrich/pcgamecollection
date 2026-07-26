@@ -1,16 +1,23 @@
 package com.example.digitalcollectionmanager.ui.screens
 
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Sort
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.GroupWork
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -18,82 +25,123 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.example.digitalcollectionmanager.R
+import com.example.digitalcollectionmanager.data.model.CompletionStatus
 import com.example.digitalcollectionmanager.data.model.Game
+import com.example.digitalcollectionmanager.data.model.GroupingType
 import com.example.digitalcollectionmanager.data.model.SortOrder
 import com.example.digitalcollectionmanager.ui.components.AppTopBar
 import com.example.digitalcollectionmanager.ui.theme.DigitalCollectionManagerTheme
 import com.example.digitalcollectionmanager.ui.viewmodel.GameListViewModel
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun GameListScreen(
     viewModel: GameListViewModel,
     onNavigate: (String) -> Unit,
     onAddGame: () -> Unit
 ) {
-    val games by viewModel.games.collectAsState()
+    val groupedGames by viewModel.groupedGames.collectAsState()
     val columnCount by viewModel.columnCount.collectAsState()
+    val selectedGameIds by viewModel.selectedGameIds.collectAsState()
+    val isMultiSelectMode by viewModel.isMultiSelectMode.collectAsState()
+    
     var selectedGame by remember { mutableStateOf<Game?>(null) }
     val sheetState = rememberModalBottomSheetState()
     var showBottomSheet by remember { mutableStateOf(false) }
     var showSortMenu by remember { mutableStateOf(false) }
+    var showGroupingMenu by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
-            AppTopBar(
-                title = stringResource(R.string.library_title),
-                onNavigate = onNavigate,
-                actions = {
-                    Box {
-                        IconButton(onClick = { showSortMenu = true }) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.Sort,
-                                contentDescription = stringResource(R.string.sort_title)
-                            )
+            if (isMultiSelectMode) {
+                MultiSelectTopBar(
+                    selectedCount = selectedGameIds.size,
+                    onClose = { viewModel.clearSelection() },
+                    onUpdateStatus = { viewModel.updateSelectedStatus(it) },
+                    onAddLabel = { viewModel.addLabelToSelected(it) }
+                )
+            } else {
+                AppTopBar(
+                    title = stringResource(R.string.library_title),
+                    onNavigate = onNavigate,
+                    actions = {
+                        // Grouping Button
+                        Box {
+                            IconButton(onClick = { showGroupingMenu = true }) {
+                                Icon(Icons.Default.GroupWork, contentDescription = "Group")
+                            }
+                            DropdownMenu(
+                                expanded = showGroupingMenu,
+                                onDismissRequest = { showGroupingMenu = false }
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("No Grouping") },
+                                    onClick = { viewModel.setGroupingType(GroupingType.NONE); showGroupingMenu = false }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Group by Status") },
+                                    onClick = { viewModel.setGroupingType(GroupingType.STATUS); showGroupingMenu = false }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Group by Label") },
+                                    onClick = { viewModel.setGroupingType(GroupingType.LABEL); showGroupingMenu = false }
+                                )
+                            }
                         }
-                        DropdownMenu(
-                            expanded = showSortMenu,
-                            onDismissRequest = { showSortMenu = false }
-                        ) {
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.sort_by_title)) },
-                                onClick = {
-                                    viewModel.setSortOrder(SortOrder.TITLE_ASC)
-                                    showSortMenu = false
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.sort_by_date_desc)) },
-                                onClick = {
-                                    viewModel.setSortOrder(SortOrder.RELEASE_DATE_DESC)
-                                    showSortMenu = false
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.sort_by_date_asc)) },
-                                onClick = {
-                                    viewModel.setSortOrder(SortOrder.RELEASE_DATE_ASC)
-                                    showSortMenu = false
-                                }
-                            )
+
+                        // Sorting Button
+                        Box {
+                            IconButton(onClick = { showSortMenu = true }) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.Sort,
+                                    contentDescription = stringResource(R.string.sort_title)
+                                )
+                            }
+                            DropdownMenu(
+                                expanded = showSortMenu,
+                                onDismissRequest = { showSortMenu = false }
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.sort_by_title)) },
+                                    onClick = { viewModel.setSortOrder(SortOrder.TITLE_ASC); showSortMenu = false }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.sort_by_date_desc)) },
+                                    onClick = { viewModel.setSortOrder(SortOrder.RELEASE_DATE_DESC); showSortMenu = false }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.sort_by_date_asc)) },
+                                    onClick = { viewModel.setSortOrder(SortOrder.RELEASE_DATE_ASC); showSortMenu = false }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Playtime (Newest)") },
+                                    onClick = { viewModel.setSortOrder(SortOrder.PLAYTIME_DESC); showSortMenu = false }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Playtime (Oldest)") },
+                                    onClick = { viewModel.setSortOrder(SortOrder.PLAYTIME_ASC); showSortMenu = false }
+                                )
+                            }
+                        }
+                        IconButton(onClick = { viewModel.setColumnCount((columnCount - 1).coerceAtLeast(2)) }) {
+                            Text("-", style = MaterialTheme.typography.headlineMedium)
+                        }
+                        IconButton(onClick = { viewModel.setColumnCount((columnCount + 1).coerceAtMost(5)) }) {
+                            Text("+", style = MaterialTheme.typography.headlineMedium)
                         }
                     }
-                    IconButton(onClick = { viewModel.setColumnCount((columnCount - 1).coerceAtLeast(2)) }) {
-                        Text("-", style = MaterialTheme.typography.headlineMedium)
-                    }
-                    IconButton(onClick = { viewModel.setColumnCount((columnCount + 1).coerceAtMost(5)) }) {
-                        Text("+", style = MaterialTheme.typography.headlineMedium)
-                    }
-                }
-            )
+                )
+            }
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = onAddGame) {
-                Text("+")
+            if (!isMultiSelectMode) {
+                FloatingActionButton(onClick = onAddGame) {
+                    Text("+")
+                }
             }
         }
     ) { innerPadding ->
-        if (games.isEmpty()) {
+        if (groupedGames.isEmpty()) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -112,14 +160,40 @@ fun GameListScreen(
                 horizontalArrangement = Arrangement.spacedBy(2.dp),
                 verticalArrangement = Arrangement.spacedBy(2.dp)
             ) {
-                items(games) { game ->
-                    GameCoverItem(
-                        game = game,
-                        onClick = {
-                            selectedGame = game
-                            showBottomSheet = true
+                groupedGames.forEach { (groupName, gamesInGroup) ->
+                    if (groupName.isNotEmpty()) {
+                        item(span = { GridItemSpan(columnCount) }) {
+                            Surface(
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(
+                                    text = groupName,
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                                )
+                            }
                         }
-                    )
+                    }
+                    items(gamesInGroup) { game ->
+                        GameCoverItem(
+                            game = game,
+                            isSelected = selectedGameIds.contains(game.id),
+                            isMultiSelect = isMultiSelectMode,
+                            onClick = {
+                                if (isMultiSelectMode) {
+                                    viewModel.toggleSelection(game.id)
+                                } else {
+                                    selectedGame = game
+                                    showBottomSheet = true
+                                }
+                            },
+                            onLongClick = {
+                                viewModel.toggleSelection(game.id)
+                            }
+                        )
+                    }
                 }
             }
         }
@@ -132,6 +206,10 @@ fun GameListScreen(
         ) {
             GameDetailContent(
                 game = selectedGame!!,
+                onUpdate = { updatedGame ->
+                    viewModel.updateGame(updatedGame)
+                    selectedGame = updatedGame
+                },
                 onDelete = {
                     viewModel.deleteGame(selectedGame!!)
                     showBottomSheet = false
@@ -141,22 +219,120 @@ fun GameListScreen(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun GameCoverItem(
     game: Game,
-    onClick: () -> Unit
+    isSelected: Boolean,
+    isMultiSelect: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit
 ) {
     Card(
         modifier = Modifier
             .aspectRatio(0.75f)
-            .clickable(onClick = onClick),
-        shape = MaterialTheme.shapes.extraSmall
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick
+            ),
+        shape = MaterialTheme.shapes.extraSmall,
+        border = if (isSelected) BorderStroke(3.dp, MaterialTheme.colorScheme.primary) else null
     ) {
-        AsyncImage(
-            model = game.coverImageUrl,
-            contentDescription = game.title,
-            modifier = Modifier.fillMaxSize(),
-            contentScale = ContentScale.Crop
+        Box(modifier = Modifier.fillMaxSize()) {
+            AsyncImage(
+                model = game.coverImageUrl,
+                contentDescription = game.title,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
+            )
+            if (isSelected) {
+                Surface(
+                    color = Color.Black.copy(alpha = 0.3f),
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    Box(contentAlignment = Alignment.TopEnd, modifier = Modifier.padding(4.dp)) {
+                        Icon(
+                            imageVector = Icons.Default.CheckCircle,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+            } else if (isMultiSelect) {
+                Box(contentAlignment = Alignment.TopEnd, modifier = Modifier.padding(4.dp)) {
+                    Surface(
+                        shape = androidx.compose.foundation.shape.CircleShape,
+                        color = Color.White.copy(alpha = 0.5f),
+                        border = BorderStroke(1.dp, Color.Black),
+                        modifier = Modifier.size(24.dp)
+                    ) {}
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun MultiSelectTopBar(
+    selectedCount: Int,
+    onClose: () -> Unit,
+    onUpdateStatus: (CompletionStatus) -> Unit,
+    onAddLabel: (String) -> Unit
+) {
+    var showStatusMenu by remember { mutableStateOf(false) }
+    var showLabelDialog by remember { mutableStateOf(false) }
+
+    TopAppBar(
+        title = { Text("$selectedCount Selected") },
+        navigationIcon = {
+            IconButton(onClick = onClose) {
+                Icon(Icons.Default.Close, contentDescription = "Cancel")
+            }
+        },
+        actions = {
+            Box {
+                TextButton(onClick = { showStatusMenu = true }) {
+                    Text("Status")
+                }
+                DropdownMenu(expanded = showStatusMenu, onDismissRequest = { showStatusMenu = false }) {
+                    CompletionStatus.entries.forEach { status ->
+                        DropdownMenuItem(
+                            text = { Text(status.name) },
+                            onClick = { onUpdateStatus(status); showStatusMenu = false }
+                        )
+                    }
+                }
+            }
+            TextButton(onClick = { showLabelDialog = true }) {
+                Text("Label")
+            }
+        }
+    )
+
+    if (showLabelDialog) {
+        var labelText by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { showLabelDialog = false },
+            title = { Text("Add Label") },
+            text = {
+                OutlinedTextField(
+                    value = labelText,
+                    onValueChange = { labelText = it },
+                    label = { Text("Label Name") },
+                    singleLine = true
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { onAddLabel(labelText); showLabelDialog = false }) {
+                    Text("Add")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showLabelDialog = false }) {
+                    Text("Cancel")
+                }
+            }
         )
     }
 }
@@ -164,8 +340,11 @@ fun GameCoverItem(
 @Composable
 fun GameDetailContent(
     game: Game,
+    onUpdate: (Game) -> Unit,
     onDelete: () -> Unit
 ) {
+    var showPlaytimePicker by remember { mutableStateOf(false) }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -196,6 +375,41 @@ fun GameDetailContent(
                 style = MaterialTheme.typography.bodyMedium
             )
         }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Status Row
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Status: ", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+            var expanded by remember { mutableStateOf(false) }
+            Box {
+                TextButton(onClick = { expanded = true }) {
+                    Text(game.completionStatus.name)
+                }
+                DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                    CompletionStatus.entries.forEach { status ->
+                        DropdownMenuItem(
+                            text = { Text(status.name) },
+                            onClick = {
+                                onUpdate(game.copy(completionStatus = status))
+                                expanded = false
+                            }
+                        )
+                    }
+                }
+            }
+        }
+
+        // Playtime Row
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Playtime: ", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+            val hours = game.playtimeMinutes / 60
+            val minutes = game.playtimeMinutes % 60
+            TextButton(onClick = { showPlaytimePicker = true }) {
+                Text("${hours}h ${minutes}m")
+            }
+        }
+
         if (game.genres.isNotEmpty()) {
             Text(
                 text = stringResource(R.string.detail_genres, game.genres.joinToString(", ")),
@@ -203,6 +417,15 @@ fun GameDetailContent(
                 modifier = Modifier.padding(top = 8.dp)
             )
         }
+        
+        if (game.labels.isNotEmpty()) {
+            Text(
+                text = "Labels: ${game.labels.joinToString(", ")}",
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(top = 4.dp)
+            )
+        }
+
         Spacer(modifier = Modifier.height(32.dp))
         Button(
             onClick = onDelete,
@@ -212,6 +435,86 @@ fun GameDetailContent(
             Text(stringResource(R.string.detail_remove))
         }
         Spacer(modifier = Modifier.height(16.dp))
+    }
+
+    if (showPlaytimePicker) {
+        PlaytimePickerDialog(
+            initialMinutes = game.playtimeMinutes,
+            onDismiss = { showPlaytimePicker = false },
+            onConfirm = { newMinutes ->
+                onUpdate(game.copy(playtimeMinutes = newMinutes))
+                showPlaytimePicker = false
+            }
+        )
+    }
+}
+
+@Composable
+fun PlaytimePickerDialog(
+    initialMinutes: Int,
+    onDismiss: () -> Unit,
+    onConfirm: (Int) -> Unit
+) {
+    var hours by remember { mutableIntStateOf(initialMinutes / 60) }
+    var minutes by remember { mutableIntStateOf(initialMinutes % 60) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Set Playtime") },
+        text = {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                NumberPicker(
+                    value = hours,
+                    onValueChange = { hours = it },
+                    range = 0..999,
+                    label = "Hours"
+                )
+                Text(":", style = MaterialTheme.typography.headlineLarge, modifier = Modifier.padding(horizontal = 8.dp))
+                NumberPicker(
+                    value = minutes,
+                    onValueChange = { minutes = it },
+                    range = 0..59,
+                    label = "Minutes"
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(hours * 60 + minutes) }) {
+                Text("Confirm")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
+}
+
+@Composable
+fun NumberPicker(
+    value: Int,
+    onValueChange: (Int) -> Unit,
+    range: IntRange,
+    label: String
+) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(label, style = MaterialTheme.typography.labelSmall)
+        IconButton(onClick = { if (value < range.last) onValueChange(value + 1) }) {
+            Text("+")
+        }
+        Text(
+            text = value.toString().padStart(2, '0'),
+            style = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.Bold
+        )
+        IconButton(onClick = { if (value > range.first) onValueChange(value - 1) }) {
+            Text("-")
+        }
     }
 }
 
@@ -234,7 +537,7 @@ fun GameListScreenPreview() {
             verticalArrangement = Arrangement.spacedBy(2.dp)
         ) {
             items(mockGames) { game ->
-                GameCoverItem(game = game, onClick = {})
+                GameCoverItem(game = game, isSelected = false, isMultiSelect = false, onClick = {}, onLongClick = {})
             }
         }
     }

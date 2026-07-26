@@ -1,6 +1,7 @@
 package com.example.digitalcollectionmanager.data.database
 
 import androidx.room.TypeConverter
+import com.example.digitalcollectionmanager.data.model.CompletionStatus
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
@@ -20,6 +21,20 @@ class Converters {
             Json.decodeFromString(value)
         } catch (e: Exception) {
             emptyList()
+        }
+    }
+
+    @TypeConverter
+    fun fromStatus(status: CompletionStatus): String {
+        return status.name
+    }
+
+    @TypeConverter
+    fun toStatus(value: String): CompletionStatus {
+        return try {
+            CompletionStatus.valueOf(value)
+        } catch (e: Exception) {
+            CompletionStatus.BACKLOG
         }
     }
 }

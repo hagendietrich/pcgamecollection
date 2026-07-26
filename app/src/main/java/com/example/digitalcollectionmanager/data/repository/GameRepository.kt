@@ -36,6 +36,13 @@ class GameRepository(
     }
 
     /**
+     * Updates a game in the local Room database.
+     */
+    suspend fun updateGame(game: Game) {
+        gameDao.updateGame(game)
+    }
+
+    /**
      * Deletes a game from the local Room database.
      */
     suspend fun deleteGame(game: Game) {

@@ -3,6 +3,7 @@ package com.example.digitalcollectionmanager.data.repository
 import android.content.Context
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
+import com.example.digitalcollectionmanager.data.model.GroupingType
 import com.example.digitalcollectionmanager.data.model.SortOrder
 import com.example.digitalcollectionmanager.dataStore
 import kotlinx.coroutines.flow.Flow
@@ -15,6 +16,7 @@ class SettingsRepository(private val context: Context) {
         val CLIENT_SECRET = stringPreferencesKey("igdb_client_secret")
         val COLUMN_COUNT = androidx.datastore.preferences.core.intPreferencesKey("column_count")
         val SORT_ORDER = stringPreferencesKey("sort_order")
+        val GROUPING_TYPE = stringPreferencesKey("grouping_type") // "NONE", "STATUS", "LABEL"
     }
 
     val columnCount: Flow<Int> = context.dataStore.data.map { preferences ->
@@ -39,6 +41,21 @@ class SettingsRepository(private val context: Context) {
     suspend fun updateSortOrder(order: SortOrder) {
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.SORT_ORDER] = order.name
+        }
+    }
+
+    val groupingType: Flow<GroupingType> = context.dataStore.data.map { preferences ->
+        val typeName = preferences[PreferencesKeys.GROUPING_TYPE] ?: GroupingType.NONE.name
+        try {
+            GroupingType.valueOf(typeName)
+        } catch (e: Exception) {
+            GroupingType.NONE
+        }
+    }
+
+    suspend fun updateGroupingType(type: GroupingType) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.GROUPING_TYPE] = type.name
         }
     }
 

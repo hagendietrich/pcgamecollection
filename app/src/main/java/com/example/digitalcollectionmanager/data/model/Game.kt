@@ -14,5 +14,8 @@ data class Game(
     val isOwned: Boolean = true,
     val externalId: Long? = null, // ID from IGDB, Steam, etc.
     val source: String = "MANUAL", // Origin: IGDB, STEAM, etc.
-    val genres: List<String> = emptyList() // List of genres from source
+    val genres: List<String> = emptyList(), // List of genres from source
+    val playtimeMinutes: Int = 0,
+    val labels: List<String> = emptyList(),
+    val completionStatus: CompletionStatus = CompletionStatus.BACKLOG
 )
