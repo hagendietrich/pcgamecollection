@@ -43,6 +43,13 @@ fun AppTopBar(
                         onNavigate(Screen.AddGame.route)
                     }
                 )
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.menu_import)) },
+                    onClick = {
+                        showMenu = false
+                        onNavigate(Screen.Import.route)
+                    }
+                )
                 HorizontalDivider()
                 DropdownMenuItem(
                     text = { Text(stringResource(R.string.menu_settings)) },

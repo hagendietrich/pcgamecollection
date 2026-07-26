@@ -14,6 +14,9 @@ class SettingsRepository(private val context: Context) {
     private object PreferencesKeys {
         val CLIENT_ID = stringPreferencesKey("igdb_client_id")
         val CLIENT_SECRET = stringPreferencesKey("igdb_client_secret")
+        val STEAM_API_KEY = stringPreferencesKey("steam_api_key")
+        val LAST_STEAM_ID = stringPreferencesKey("last_steam_id")
+        val LAST_GOG_USERNAME = stringPreferencesKey("last_gog_username")
         val COLUMN_COUNT = androidx.datastore.preferences.core.intPreferencesKey("column_count")
         val SORT_ORDER = stringPreferencesKey("sort_order")
         val GROUPING_TYPE = stringPreferencesKey("grouping_type") // "NONE", "STATUS", "LABEL"
@@ -67,15 +70,55 @@ class SettingsRepository(private val context: Context) {
         preferences[PreferencesKeys.CLIENT_SECRET]
     }
 
+    val steamApiKey: Flow<String?> = context.dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.STEAM_API_KEY]
+    }
+
+    val lastSteamId: Flow<String?> = context.dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.LAST_STEAM_ID]
+    }
+
+    val lastGogUsername: Flow<String?> = context.dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.LAST_GOG_USERNAME]
+    }
+
     val isConfigured: Flow<Boolean> = context.dataStore.data.map { preferences ->
         !preferences[PreferencesKeys.CLIENT_ID].isNullOrBlank() && 
         !preferences[PreferencesKeys.CLIENT_SECRET].isNullOrBlank()
     }
 
-    suspend fun saveCredentials(clientId: String, clientSecret: String) {
+    suspend fun saveIgdbCredentials(clientId: String, clientSecret: String) {
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.CLIENT_ID] = clientId
             preferences[PreferencesKeys.CLIENT_SECRET] = clientSecret
+        }
+    }
+
+    suspend fun saveSteamApiKey(apiKey: String) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.STEAM_API_KEY] = apiKey
+        }
+    }
+
+    suspend fun saveLastSteamId(id: String) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.LAST_STEAM_ID] = id
+        }
+    }
+
+    suspend fun saveLastGogUsername(name: String) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.LAST_GOG_USERNAME] = name
+        }
+    }
+
+    suspend fun saveCredentials(clientId: String, clientSecret: String, steamApiKey: String? = null) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.CLIENT_ID] = clientId
+            preferences[PreferencesKeys.CLIENT_SECRET] = clientSecret
+            if (steamApiKey != null) {
+                preferences[PreferencesKeys.STEAM_API_KEY] = steamApiKey
+            }
         }
     }
 

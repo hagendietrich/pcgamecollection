@@ -17,22 +17,38 @@ class SetupViewModel(
     private val _uiState = MutableStateFlow<SetupUiState>(SetupUiState.Idle)
     val uiState: StateFlow<SetupUiState> = _uiState.asStateFlow()
 
-    fun saveAndConnect(clientId: String, clientSecret: String) {
-        if (clientId.isBlank() || clientSecret.isBlank()) {
-            _uiState.value = SetupUiState.Error("Please enter both Client ID and Client Secret")
-            return
-        }
-
+    fun saveSettings(clientId: String, clientSecret: String, steamApiKey: String) {
         viewModelScope.launch {
             _uiState.value = SetupUiState.Loading
-            val success = igdbClient.authenticate(clientId, clientSecret)
-            if (success) {
-                settingsRepository.saveCredentials(clientId, clientSecret)
+            
+            // 1. Handle Steam API Key (always save if provided, regardless of IGDB)
+            if (steamApiKey.isNotBlank()) {
+                settingsRepository.saveSteamApiKey(steamApiKey)
+            }
+
+            // 2. Handle IGDB Credentials
+            if (clientId.isNotBlank() && clientSecret.isNotBlank()) {
+                // If provided, attempt to connect and verify
+                val success = igdbClient.authenticate(clientId, clientSecret)
+                if (success) {
+                    settingsRepository.saveIgdbCredentials(clientId, clientSecret)
+                    _uiState.value = SetupUiState.Success
+                } else {
+                    _uiState.value = SetupUiState.Error("Invalid IGDB credentials. Please check your Client ID and Secret.")
+                }
+            } else if (steamApiKey.isNotBlank()) {
+                // If IGDB is blank but Steam was provided, we consider it a success for the Steam update
                 _uiState.value = SetupUiState.Success
             } else {
-                _uiState.value = SetupUiState.Error("Invalid credentials. Please check your Client ID and Secret.")
+                // Everything is blank
+                _uiState.value = SetupUiState.Error("Please enter IGDB credentials or a Steam API Key.")
             }
         }
+    }
+
+    // Keep for backward compatibility if needed, but redirects to saveSettings
+    fun saveAndConnect(clientId: String, clientSecret: String, steamApiKey: String = "") {
+        saveSettings(clientId, clientSecret, steamApiKey)
     }
 }
 

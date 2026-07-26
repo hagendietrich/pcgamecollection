@@ -27,6 +27,6 @@ interface GameDao {
     @Query("SELECT * FROM games WHERE title = :title LIMIT 1")
     suspend fun getGameByTitle(title: String): Game?
 
-    @Query("SELECT * FROM games WHERE externalId = :externalId AND source = :source LIMIT 1")
-    suspend fun getGameByExternalId(externalId: Long, source: String): Game?
+    @Query("SELECT * FROM games WHERE igdbId = :igdbId LIMIT 1")
+    suspend fun getGameByIgdbId(igdbId: Long): Game?
 }

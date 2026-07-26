@@ -4,14 +4,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.digitalcollectionmanager.data.api.models.IgdbGame
 import com.example.digitalcollectionmanager.data.model.Game
-import com.example.digitalcollectionmanager.data.model.GameSource
 import com.example.digitalcollectionmanager.data.repository.GameRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import java.text.SimpleDateFormat
-import java.util.*
 
 class AddGameViewModel(
     private val gameRepository: GameRepository
@@ -37,10 +34,10 @@ class AddGameViewModel(
                 if (results.isEmpty()) {
                     _uiState.value = AddGameUiState.Empty
                 } else {
-                    // Check which games are already in the library
+                    // Check which games are already in the library using IGDB ID
                     val existingIds = mutableSetOf<Long>()
                     results.forEach { igdbGame ->
-                        val existing = gameRepository.getGameByExternalId(igdbGame.id, GameSource.IGDB.name)
+                        val existing = gameRepository.getGameByIgdbId(igdbGame.id)
                         if (existing != null) {
                             existingIds.add(igdbGame.id)
                         }
@@ -58,12 +55,12 @@ class AddGameViewModel(
         viewModelScope.launch {
             val game = Game(
                 title = igdbGame.name,
-                platform = "IGDB",
+                platforms = listOf("IGDB"),
                 coverImageUrl = igdbGame.cover?.url?.let { gameRepository.getFullCoverUrl(it) },
-                releaseDate = igdbGame.firstReleaseDate?.let { formatTimestamp(it) },
+                releaseDate = gameRepository.formatTimestamp(igdbGame.firstReleaseDate),
                 isOwned = true,
-                externalId = igdbGame.id,
-                source = GameSource.IGDB.name,
+                igdbId = igdbGame.id,
+                sourceIds = mapOf("IGDB" to igdbGame.id.toString()),
                 genres = igdbGame.genres?.map { it.name } ?: emptyList()
             )
             gameRepository.addGame(game)
@@ -76,12 +73,6 @@ class AddGameViewModel(
 
     fun clearSnackbar() {
         _snackbarMessage.value = null
-    }
-
-    private fun formatTimestamp(timestamp: Long): String {
-        val date = Date(timestamp * 1000L)
-        val format = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-        return format.format(date)
     }
 }
 

@@ -2,6 +2,7 @@
     <string name="app_name">Digital Collection Manager</string>
     <string name="menu_my_games">Meine Spiele</string>
     <string name="menu_add_game">Spiel hinzufügen</string>
+    <string name="menu_import">Spiele importieren</string>
     <string name="menu_settings">Einstellungen (IGDB)</string>
     <string name="library_title">Meine Sammlung</string>
     <string name="library_empty">Deine Sammlung ist leer. Tippe auf +, um Spiele hinzuzufügen!</string>
@@ -14,6 +15,8 @@
     <string name="sort_by_title">Titel (A-Z)</string>
     <string name="sort_by_date_asc">Veröffentlichungsdatum (Älteste)</string>
     <string name="sort_by_date_desc">Veröffentlichungsdatum (Neueste)</string>
+    <string name="sort_by_playtime_asc">Spielzeit (Niedrigste)</string>
+    <string name="sort_by_playtime_desc">Spielzeit (Höchste)</string>
     <string name="detail_remove">Aus Sammlung entfernen</string>
     <string name="detail_platform">Plattform: %1$s</string>
     <string name="detail_released">Veröffentlicht: %1$s</string>
@@ -23,6 +26,7 @@
     <string name="setup_instruction">Um nach Spielen zu suchen, musst du deine IGDB-API-Zugangsdaten angeben (vom Twitch Developer Portal).</string>
     <string name="setup_client_id">Client-ID</string>
     <string name="setup_client_secret">Client-Secret</string>
+    <string name="setup_steam_api_key">Steam API Key (Optional)</string>
     <string name="setup_connect">Mit IGDB verbinden</string>
     <string name="setup_save">Änderungen speichern</string>
     <string name="setup_error_empty">Bitte gib sowohl die Client-ID als auch das Client-Secret ein</string>

@@ -2,17 +2,17 @@ package com.example.digitalcollectionmanager.ui.screens
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Sort
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.GroupWork
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -21,6 +21,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
@@ -50,6 +52,9 @@ fun GameListScreen(
     var showBottomSheet by remember { mutableStateOf(false) }
     var showSortMenu by remember { mutableStateOf(false) }
     var showGroupingMenu by remember { mutableStateOf(false) }
+
+    // State to track collapsed groups
+    val collapsedGroups = remember { mutableStateMapOf<String, Boolean>() }
 
     Scaffold(
         topBar = {
@@ -86,6 +91,10 @@ fun GameListScreen(
                                     text = { Text("Group by Label") },
                                     onClick = { viewModel.setGroupingType(GroupingType.LABEL); showGroupingMenu = false }
                                 )
+                                DropdownMenuItem(
+                                    text = { Text("Group by Platform") },
+                                    onClick = { viewModel.setGroupingType(GroupingType.PLATFORM); showGroupingMenu = false }
+                                )
                             }
                         }
 
@@ -114,11 +123,11 @@ fun GameListScreen(
                                     onClick = { viewModel.setSortOrder(SortOrder.RELEASE_DATE_ASC); showSortMenu = false }
                                 )
                                 DropdownMenuItem(
-                                    text = { Text("Playtime (Newest)") },
+                                    text = { Text(stringResource(R.string.sort_by_playtime_desc)) },
                                     onClick = { viewModel.setSortOrder(SortOrder.PLAYTIME_DESC); showSortMenu = false }
                                 )
                                 DropdownMenuItem(
-                                    text = { Text("Playtime (Oldest)") },
+                                    text = { Text(stringResource(R.string.sort_by_playtime_asc)) },
                                     onClick = { viewModel.setSortOrder(SortOrder.PLAYTIME_ASC); showSortMenu = false }
                                 )
                             }
@@ -162,37 +171,72 @@ fun GameListScreen(
             ) {
                 groupedGames.forEach { (groupName, gamesInGroup) ->
                     if (groupName.isNotEmpty()) {
+                        val isCollapsed = collapsedGroups[groupName] ?: false
                         item(span = { GridItemSpan(columnCount) }) {
                             Surface(
                                 color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                                modifier = Modifier.fillMaxWidth()
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { collapsedGroups[groupName] = !isCollapsed }
                             ) {
-                                Text(
-                                    text = groupName,
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                                Row(
+                                    modifier = Modifier
+                                        .padding(horizontal = 12.dp, vertical = 8.dp)
+                                        .fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(
+                                        text = "$groupName (${gamesInGroup.size})",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Icon(
+                                        imageVector = if (isCollapsed) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowUp,
+                                        contentDescription = if (isCollapsed) "Expand" else "Collapse"
+                                    )
+                                }
+                            }
+                        }
+                        if (!isCollapsed) {
+                            items(gamesInGroup) { game ->
+                                GameCoverItem(
+                                    game = game,
+                                    isSelected = selectedGameIds.contains(game.id),
+                                    isMultiSelect = isMultiSelectMode,
+                                    onClick = {
+                                        if (isMultiSelectMode) {
+                                            viewModel.toggleSelection(game.id)
+                                        } else {
+                                            selectedGame = game
+                                            showBottomSheet = true
+                                        }
+                                    },
+                                    onLongClick = {
+                                        viewModel.toggleSelection(game.id)
+                                    }
                                 )
                             }
                         }
-                    }
-                    items(gamesInGroup) { game ->
-                        GameCoverItem(
-                            game = game,
-                            isSelected = selectedGameIds.contains(game.id),
-                            isMultiSelect = isMultiSelectMode,
-                            onClick = {
-                                if (isMultiSelectMode) {
+                    } else {
+                        items(gamesInGroup) { game ->
+                            GameCoverItem(
+                                game = game,
+                                isSelected = selectedGameIds.contains(game.id),
+                                isMultiSelect = isMultiSelectMode,
+                                onClick = {
+                                    if (isMultiSelectMode) {
+                                        viewModel.toggleSelection(game.id)
+                                    } else {
+                                        selectedGame = game
+                                        showBottomSheet = true
+                                    }
+                                },
+                                onLongClick = {
                                     viewModel.toggleSelection(game.id)
-                                } else {
-                                    selectedGame = game
-                                    showBottomSheet = true
                                 }
-                            },
-                            onLongClick = {
-                                viewModel.toggleSelection(game.id)
-                            }
-                        )
+                            )
+                        }
                     }
                 }
             }
@@ -366,7 +410,7 @@ fun GameDetailContent(
             fontWeight = FontWeight.Bold
         )
         Text(
-            text = stringResource(R.string.detail_platform, game.platform),
+            text = stringResource(R.string.detail_platform, game.platforms.joinToString(", ")),
             style = MaterialTheme.typography.bodyMedium
         )
         game.releaseDate?.let {
@@ -442,7 +486,15 @@ fun GameDetailContent(
             initialMinutes = game.playtimeMinutes,
             onDismiss = { showPlaytimePicker = false },
             onConfirm = { newMinutes ->
-                onUpdate(game.copy(playtimeMinutes = newMinutes))
+                // When manually updating playtime, we store it under a "Manual" source in our internal map
+                val updatedPlaytimes = game.playtimes.toMutableMap()
+                updatedPlaytimes["Manual"] = newMinutes
+                val totalPlaytime = updatedPlaytimes.values.sum()
+                
+                onUpdate(game.copy(
+                    playtimes = updatedPlaytimes,
+                    playtimeMinutes = totalPlaytime
+                ))
                 showPlaytimePicker = false
             }
         )
@@ -455,8 +507,8 @@ fun PlaytimePickerDialog(
     onDismiss: () -> Unit,
     onConfirm: (Int) -> Unit
 ) {
-    var hours by remember { mutableIntStateOf(initialMinutes / 60) }
-    var minutes by remember { mutableIntStateOf(initialMinutes % 60) }
+    var hoursStr by remember { mutableStateOf((initialMinutes / 60).toString()) }
+    var minutesStr by remember { mutableStateOf((initialMinutes % 60).toString()) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -467,23 +519,47 @@ fun PlaytimePickerDialog(
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                NumberPicker(
-                    value = hours,
-                    onValueChange = { hours = it },
-                    range = 0..999,
-                    label = "Hours"
+                OutlinedTextField(
+                    value = hoursStr,
+                    onValueChange = { newValue ->
+                        if (newValue.isEmpty() || newValue.all { it.isDigit() }) {
+                            hoursStr = newValue
+                        }
+                    },
+                    label = { Text("Hours") },
+                    modifier = Modifier.weight(1f),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    singleLine = true,
+                    textStyle = LocalTextStyle.current.copy(textAlign = TextAlign.Center)
                 )
-                Text(":", style = MaterialTheme.typography.headlineLarge, modifier = Modifier.padding(horizontal = 8.dp))
-                NumberPicker(
-                    value = minutes,
-                    onValueChange = { minutes = it },
-                    range = 0..59,
-                    label = "Minutes"
+                Text(
+                    text = ":",
+                    style = MaterialTheme.typography.headlineLarge,
+                    modifier = Modifier.padding(horizontal = 8.dp)
+                )
+                OutlinedTextField(
+                    value = minutesStr,
+                    onValueChange = { newValue ->
+                        if (newValue.isEmpty() || (newValue.all { it.isDigit() } && (newValue.toIntOrNull() ?: 0) < 60)) {
+                            minutesStr = newValue
+                        }
+                    },
+                    label = { Text("Minutes") },
+                    modifier = Modifier.weight(1f),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    singleLine = true,
+                    textStyle = LocalTextStyle.current.copy(textAlign = TextAlign.Center)
                 )
             }
         },
         confirmButton = {
-            TextButton(onClick = { onConfirm(hours * 60 + minutes) }) {
+            TextButton(
+                onClick = {
+                    val h = hoursStr.toIntOrNull() ?: 0
+                    val m = minutesStr.toIntOrNull() ?: 0
+                    onConfirm(h * 60 + m)
+                }
+            ) {
                 Text("Confirm")
             }
         },
@@ -495,38 +571,15 @@ fun PlaytimePickerDialog(
     )
 }
 
-@Composable
-fun NumberPicker(
-    value: Int,
-    onValueChange: (Int) -> Unit,
-    range: IntRange,
-    label: String
-) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(label, style = MaterialTheme.typography.labelSmall)
-        IconButton(onClick = { if (value < range.last) onValueChange(value + 1) }) {
-            Text("+")
-        }
-        Text(
-            text = value.toString().padStart(2, '0'),
-            style = MaterialTheme.typography.headlineMedium,
-            fontWeight = FontWeight.Bold
-        )
-        IconButton(onClick = { if (value > range.first) onValueChange(value - 1) }) {
-            Text("-")
-        }
-    }
-}
-
 @Preview(showBackground = true)
 @Composable
 fun GameListScreenPreview() {
     DigitalCollectionManagerTheme {
         val mockGames = listOf(
-            Game(1, "The Witcher 3", "PC", "https://images.igdb.com/igdb/image/upload/t_cover_big/co1r8v.jpg", "2015", true),
-            Game(2, "Cyberpunk 2077", "PC", "https://images.igdb.com/igdb/image/upload/t_cover_big/co2mdf.jpg", "2020", true),
-            Game(3, "Stardew Valley", "PC", "https://images.igdb.com/igdb/image/upload/t_cover_big/co1r8v.jpg", "2016", true),
-            Game(4, "Hades", "PC", "https://images.igdb.com/igdb/image/upload/t_cover_big/co1r8v.jpg", "2020", true)
+            Game(1, "The Witcher 3", listOf("PC"), "https://images.igdb.com/igdb/image/upload/t_cover_big/co1r8v.jpg", "2015", true),
+            Game(2, "Cyberpunk 2077", listOf("PC"), "https://images.igdb.com/igdb/image/upload/t_cover_big/co2mdf.jpg", "2020", true),
+            Game(3, "Stardew Valley", listOf("PC"), "https://images.igdb.com/igdb/image/upload/t_cover_big/co1r8v.jpg", "2016", true),
+            Game(4, "Hades", listOf("PC"), "https://images.igdb.com/igdb/image/upload/t_cover_big/co1r8v.jpg", "2020", true)
         )
         
         LazyVerticalGrid(

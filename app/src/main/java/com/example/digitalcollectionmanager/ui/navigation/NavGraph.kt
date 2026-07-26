@@ -8,12 +8,8 @@ import androidx.navigation.compose.composable
 import com.example.digitalcollectionmanager.data.api.IgdbClient
 import com.example.digitalcollectionmanager.data.repository.GameRepository
 import com.example.digitalcollectionmanager.data.repository.SettingsRepository
-import com.example.digitalcollectionmanager.ui.screens.AddGameScreen
-import com.example.digitalcollectionmanager.ui.screens.GameListScreen
-import com.example.digitalcollectionmanager.ui.screens.SetupScreen
-import com.example.digitalcollectionmanager.ui.viewmodel.AddGameViewModel
-import com.example.digitalcollectionmanager.ui.viewmodel.GameListViewModel
-import com.example.digitalcollectionmanager.ui.viewmodel.SetupViewModel
+import com.example.digitalcollectionmanager.ui.screens.*
+import com.example.digitalcollectionmanager.ui.viewmodel.*
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -24,6 +20,7 @@ sealed class Screen(val route: String) {
     object Library : Screen("library")
     object AddGame : Screen("add_game")
     object Setup : Screen("setup")
+    object Import : Screen("import")
 }
 
 @Composable
@@ -70,6 +67,21 @@ fun AppNavGraph(
                 onBack = { navController.popBackStack() }
             )
         }
+        composable(Screen.Import.route) {
+            val viewModel: ImportViewModel = viewModel(
+                factory = object : ViewModelProvider.Factory {
+                    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                        @Suppress("UNCHECKED_CAST")
+                        return ImportViewModel(gameRepository, settingsRepository) as T
+                    }
+                }
+            )
+            ImportScreen(
+                viewModel = viewModel,
+                onNavigate = { route -> navController.navigate(route) },
+                onBack = { navController.popBackStack() }
+            )
+        }
         composable(Screen.Setup.route) {
             val viewModel: SetupViewModel = viewModel(
                 factory = object : ViewModelProvider.Factory {
@@ -82,13 +94,15 @@ fun AppNavGraph(
             val uiState by viewModel.uiState.collectAsState()
             val clientId by settingsRepository.clientId.collectAsState(initial = "")
             val clientSecret by settingsRepository.clientSecret.collectAsState(initial = "")
+            val steamApiKey by settingsRepository.steamApiKey.collectAsState(initial = "")
 
             SetupScreen(
                 uiState = uiState,
                 initialClientId = clientId ?: "",
                 initialClientSecret = clientSecret ?: "",
-                isSettingsMode = true, // We only show it in the graph via menu now, or as start destination
-                onSave = { id, secret -> viewModel.saveAndConnect(id, secret) },
+                initialSteamApiKey = steamApiKey ?: "",
+                isSettingsMode = true,
+                onSave = { id, secret, steamKey -> viewModel.saveAndConnect(id, secret, steamKey) },
                 onSuccess = { 
                     navController.popBackStack()
                 },

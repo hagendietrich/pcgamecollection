@@ -1,0 +1,8 @@
+- [x] **UI Implementation: Collapsible Headers**
+    - [x] Add `collapsedGroups` state to `GameListScreen.kt`
+    - [x] Update header UI to include game count and arrow icon
+    - [x] Implement toggle logic for collapsing/expanding
+    - [x] Conditionally show games in the grid
+- [x] **Verification**
+    - [x] Verify build
+    - [ ] Manual test: Verify counts and collapse/expand functionality

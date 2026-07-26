@@ -20,13 +20,15 @@ fun SetupScreen(
     uiState: SetupUiState,
     initialClientId: String = "",
     initialClientSecret: String = "",
+    initialSteamApiKey: String = "",
     isSettingsMode: Boolean = false,
-    onSave: (String, String) -> Unit,
+    onSave: (String, String, String) -> Unit,
     onSuccess: () -> Unit,
     onNavigate: (String) -> Unit = {}
 ) {
     var clientId by remember { mutableStateOf(initialClientId) }
     var clientSecret by remember { mutableStateOf(initialClientSecret) }
+    var steamApiKey by remember { mutableStateOf(initialSteamApiKey) }
 
     LaunchedEffect(uiState) {
         if (uiState is SetupUiState.Success) {
@@ -80,6 +82,29 @@ fun SetupScreen(
                 singleLine = true,
                 visualTransformation = PasswordVisualTransformation()
             )
+            Spacer(modifier = Modifier.height(32.dp))
+
+            Text(
+                text = "External Store APIs",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.align(Alignment.Start)
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+
+            OutlinedTextField(
+                value = steamApiKey,
+                onValueChange = { steamApiKey = it },
+                label = { Text(stringResource(R.string.setup_steam_api_key)) },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                visualTransformation = PasswordVisualTransformation()
+            )
+            Text(
+                text = "Get your key at: https://steamcommunity.com/dev/apikey (Use 'localhost' as domain)",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp).align(Alignment.Start)
+            )
             Spacer(modifier = Modifier.height(24.dp))
 
             if (uiState is SetupUiState.Error) {
@@ -87,6 +112,8 @@ fun SetupScreen(
                     text = when (uiState.message) {
                         "Please enter both Client ID and Client Secret" -> stringResource(R.string.setup_error_empty)
                         "Invalid credentials. Please check your Client ID and Secret." -> stringResource(R.string.setup_error_invalid)
+                        "Please enter IGDB credentials or a Steam API Key." -> "Please enter IGDB credentials or a Steam API Key."
+                        "Invalid IGDB credentials. Please check your Client ID and Secret." -> stringResource(R.string.setup_error_invalid)
                         else -> uiState.message
                     },
                     color = MaterialTheme.colorScheme.error,
@@ -96,7 +123,7 @@ fun SetupScreen(
             }
 
             Button(
-                onClick = { onSave(clientId, clientSecret) },
+                onClick = { onSave(clientId, clientSecret, steamApiKey) },
                 modifier = Modifier.fillMaxWidth(),
                 enabled = uiState !is SetupUiState.Loading
             ) {
@@ -121,7 +148,7 @@ fun SetupScreenPreview() {
         SetupScreen(
             uiState = SetupUiState.Idle,
             isSettingsMode = true,
-            onSave = { _, _ -> },
+            onSave = { _, _, _ -> },
             onSuccess = {},
             onNavigate = {}
         )

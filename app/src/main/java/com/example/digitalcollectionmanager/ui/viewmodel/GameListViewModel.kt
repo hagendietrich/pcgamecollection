@@ -57,6 +57,19 @@ class GameListViewModel(
                 }
                 labeled
             }
+            GroupingType.PLATFORM -> {
+                val platformMap = mutableMapOf<String, MutableList<Game>>()
+                sorted.forEach { game ->
+                    if (game.platforms.isEmpty()) {
+                        platformMap.getOrPut("Other") { mutableListOf() }.add(game)
+                    } else {
+                        game.platforms.forEach { platform ->
+                            platformMap.getOrPut(platform) { mutableListOf() }.add(game)
+                        }
+                    }
+                }
+                platformMap.toSortedMap()
+            }
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
 

@@ -6,8 +6,8 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 /**
- * Room TypeConverters to allow storing complex types like List<String> in the database.
- * It serializes the list to a JSON string for storage and deserializes it back.
+ * Room TypeConverters to allow storing complex types in the database.
+ * It serializes objects to JSON strings for storage and deserializes them back.
  */
 class Converters {
     @TypeConverter
@@ -21,6 +21,34 @@ class Converters {
             Json.decodeFromString(value)
         } catch (e: Exception) {
             emptyList()
+        }
+    }
+
+    @TypeConverter
+    fun fromMapStringString(value: Map<String, String>): String {
+        return Json.encodeToString(value)
+    }
+
+    @TypeConverter
+    fun toMapStringString(value: String): Map<String, String> {
+        return try {
+            Json.decodeFromString(value)
+        } catch (e: Exception) {
+            emptyMap()
+        }
+    }
+
+    @TypeConverter
+    fun fromMapStringInt(value: Map<String, Int>): String {
+        return Json.encodeToString(value)
+    }
+
+    @TypeConverter
+    fun toMapStringInt(value: String): Map<String, Int> {
+        return try {
+            Json.decodeFromString(value)
+        } catch (e: Exception) {
+            emptyMap()
         }
     }
 
