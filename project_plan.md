@@ -95,31 +95,40 @@ Vertical grid of game covers:
 
 ---
 
-## 9. Project Files Summary
+## 8. UI – Playtime Tracking, Completion Status & Grouping
+- **Data Expansion**:
+    - `playtimeMinutes: Int = 0`.
+    - `labels: List<String> = emptyList()` (manually managed).
+    - `completionStatus: CompletionStatus` (Enum).
+- **Completion Status Enum**:
+    - Values: `COMPLETED`, `PLAYING`, `ON_HOLD`, `BACKLOG`, `ABANDONED`.
+    - Logical Order: (Highest) Completed > Playing > On-Hold > Backlog > Abandoned (Lowest).
+- **UI Details**:
+    - **Detail View**: Display playtime as "X hours, Y minutes" and show/edit completion status as well as labels.
+    - **Library Grid**:
+        - Long-press to enable **Multi-Select Mode**.
+        - Action bar appears during multi-select to add/remove labels or update status for all selected games.
+        - **Grouping**: Toggle in the top bar to "Group by Status" or "Group by Label" with sticky headers.
+- **Sorting**: Add `PLAYTIME_DESC` and `PLAYTIME_ASC` to `SortOrder`.
 
-| File | Status | Purpose |
-|-------|--------|---------|
-| `app/build.gradle.kts` | ✅ Modified | Added Room, Coil, Ktor, DataStore deps |
-| `gradle/libs.versions.toml` | ✅ Modified | Version catalog for all libraries |
-| `src/main/AndroidManifest.xml` | ✅ Modified | Added INTERNET permission & custom App class |
-| `data/database/AppDatabase.kt` | ✅ Created | Room DB configuration |
-| `data/database/Converters.kt` | ✅ Created | TypeConverters for List<String> storage |
-| `data/api/models/IgdbModels.kt` | ✅ Created | IGDB API request/response models |
-| `data/api/IgdbClient.kt` | ✅ Created | Ktor HTTP client for IGDB/Twitch API |
-| `data/repository/GameRepository.kt` | ✅ Created | Mediator for Game data |
-| `data/repository/SettingsRepository.kt` | ✅ Created | Secure credential storage via DataStore |
-| `MainApp.kt` | ✅ Created | Application class & Singleton provider |
-| `ui/screens/AddGameScreen.kt` | ✅ Created | Search & manual add UI |
-| `ui/screens/GameListScreen.kt` | ✅ Created | Grid-based library with adjustable density |
-| `ui/screens/SetupScreen.kt` | ✅ Created | Credential entry UI |
+---
+
+## 9. Feature – GOG & Steam Profile Import
+- **Navigation**: Group imports under an "Import" submenu in the `AppTopBar`.
+- **GOG Import**:
+    - User provides GOG username.
+    - App fetches `https://www.gog.com/u/[user]/games` (public profile).
+    - Parse game titles and playtimes.
+- **Steam Import**:
+    - User provides Steam ID or Custom URL.
+    - App fetches `https://steamcommunity.com/id/[user]/games` (public profile).
+    - Parse game titles and playtimes.
+- **UX**: UI must inform users that profiles must be set to "Public" for this to work.
 
 ---
 
 ## 10. What Is Explicitly *Not* in Scope (Step 1)
-- Steam API auth (`steamcommunity.com/openid`) — reserved for Step 2.
-- GOG user profile parsing — same, Step 2+.
-- Multi-platform imports — add a "Platforms" tab later with toggles per source.
-- Game categories / Genres / Tags from IGDB — optional detail screen in step 2.
+- Multi-platform imports (beyond public profile parsing) — Step 3+.
 - Export/import via CSV/JSON — deferred until after basic CRUD is solid.
 
 ---
@@ -147,6 +156,7 @@ The following were discovered during file inspection and fixed directly:
 ### 📋 Pending (now re-scheduled)
 | Item | Plan Step# | Priority |
 |---|---|---|
-| Platform filtering / Steam / GOG | Step 2 | Future |
+| Playtime Tracking & Extended Sorting | Step 8 | High |
+| GOG & Steam Public Profile Import | Step 9 | High |
 
 ---
