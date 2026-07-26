@@ -1,8 +1,8 @@
-- [x] **UI Implementation: Collapsible Headers**
-    - [x] Add `collapsedGroups` state to `GameListScreen.kt`
-    - [x] Update header UI to include game count and arrow icon
-    - [x] Implement toggle logic for collapsing/expanding
-    - [x] Conditionally show games in the grid
-- [x] **Verification**
-    - [x] Verify build
-    - [ ] Manual test: Verify counts and collapse/expand functionality
+- [ ] **GOG Parsing Fix**
+    - [ ] Update `GogClient.kt` to handle `stats: []`
+- [ ] **Matching Logic Optimization**
+    - [ ] Refactor `findBestIgdbMatch` in `GameRepository.kt` for higher leniency
+    - [ ] Update `cleanTitle` with more robust normalization
+- [ ] **Verification**
+    - [ ] Verify build
+    - [ ] Manual test: reach ~230 GOG games and match "Settlers 4"

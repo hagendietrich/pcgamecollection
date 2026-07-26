@@ -51,55 +51,77 @@ class GameRepository(
         onProgress(0.05f, "Fetching games from Steam API...")
         val steamGames = steamClient.fetchOwnedGames(apiKey, steamId)
         if (steamGames.isEmpty()) return@withContext 0
-        println("Steam Sync: Found ${steamGames.size} games on Steam")
+
+        // Local Lookup Optimization: Get existing Steam IDs from database
+        val localGames = gameDao.getAllGames().first()
+        val localSteamToIgdb = localGames.mapNotNull { game ->
+            val appId = game.sourceIds["STEAM"]
+            val igdbId = game.igdbId
+            if (appId != null && igdbId != null) appId to igdbId else null
+        }.toMap()
 
         val clientId = settingsRepository.clientId.firstOrNull() ?: return@withContext 0
         val clientSecret = settingsRepository.clientSecret.firstOrNull() ?: return@withContext 0
         igdbClient.authenticate(clientId, clientSecret)
 
-        // Step 1: Resolve Steam IDs to IGDB IDs in batches of 50
-        val allSteamIds = steamGames.map { it.appid.toString() }
         val igdbIdToSteamId = mutableMapOf<Long, String>()
-        
-        val batches = allSteamIds.chunked(50)
-        batches.forEachIndexed { index, batch ->
-            val progress = 0.1f + (0.2f * (index.toFloat() / batches.size))
-            onProgress(progress, "Resolving Steam IDs on IGDB (batch ${index + 1}/${batches.size})...")
-            
-            val externalGames = igdbClient.resolveExternalGames(clientId, IgdbExternalCategory.STEAM, batch)
-            externalGames.filter { it.game != null }.forEach { 
-                igdbIdToSteamId[it.game!!] = it.uid 
+        val unknownSteamGames = mutableListOf<SteamClient.SteamGame>()
+
+        // Separate known from unknown
+        steamGames.forEach { steamGame ->
+            val appId = steamGame.appid.toString()
+            val knownIgdbId = localSteamToIgdb[appId]
+            if (knownIgdbId != null) {
+                igdbIdToSteamId[knownIgdbId] = appId
+            } else {
+                unknownSteamGames.add(steamGame)
             }
         }
-        println("Steam Sync: Matched ${igdbIdToSteamId.size} games by AppID")
+
+        // Step 1: Resolve ONLY unknown Steam IDs to IGDB IDs
+        if (unknownSteamGames.isNotEmpty()) {
+            val batches = unknownSteamGames.map { it.appid.toString() }.chunked(50)
+            batches.forEachIndexed { index, batch ->
+                val progress = 0.1f + (0.1f * (index.toFloat() / batches.size))
+                onProgress(progress, "Resolving new Steam IDs on IGDB...")
+                
+                val externalGames = igdbClient.resolveExternalGames(clientId, IgdbExternalCategory.STEAM, batch)
+                externalGames.filter { it.game != null }.forEach { 
+                    igdbIdToSteamId[it.game!!] = it.uid 
+                }
+            }
+        }
 
         // Step 2: Fallback - Search by Title for unmatched games
         val matchedAppIds = igdbIdToSteamId.values.toSet()
-        val unmatchedSteamGames = steamGames.filter { it.appid.toString() !in matchedAppIds }
+        val unmatchedSteamGames = unknownSteamGames.filter { it.appid.toString() !in matchedAppIds }
         
         unmatchedSteamGames.forEachIndexed { index, steamGame ->
-            val progress = 0.3f + (0.3f * (index.toFloat() / unmatchedSteamGames.size))
-            if (index % 5 == 0) onProgress(progress, "Matching remaining Steam games by title ($index/${unmatchedSteamGames.size})...")
+            val progress = 0.2f + (0.4f * (index.toFloat() / unmatchedSteamGames.size))
+            if (index % 5 == 0) onProgress(progress, "Matching: ${steamGame.name}...")
             
-            val results = igdbClient.searchGames(clientId, steamGame.name)
-            val match = results.find { it.name.equals(steamGame.name, ignoreCase = true) } ?: results.firstOrNull()
+            val match = findBestIgdbMatch(clientId, steamGame.name)
             if (match != null) {
                 igdbIdToSteamId[match.id] = steamGame.appid.toString()
+            } else {
+                println("Sync Warning: Could not find Steam game on IGDB: '${steamGame.name}'")
             }
         }
-        println("Steam Sync: Total matched games after title fallback: ${igdbIdToSteamId.size}")
         
-        // Step 3: Fetch full metadata
-        val igdbIds = igdbIdToSteamId.keys.toList()
-        val igdbGames = mutableMapOf<Long, IgdbGame>()
+        // Step 3: Fetch metadata ONLY for IDs we don't have locally
+        val localIgdbIds = localGames.mapNotNull { it.igdbId }.toSet()
+        val newIgdbIds = igdbIdToSteamId.keys.filter { it !in localIgdbIds }
+        val igdbGamesMetadata = mutableMapOf<Long, IgdbGame>()
         
-        val metadataBatches = igdbIds.chunked(50)
-        metadataBatches.forEachIndexed { index, batch ->
-            val progress = 0.6f + (0.2f * (index.toFloat() / metadataBatches.size))
-            onProgress(progress, "Fetching metadata from IGDB...")
-            
-            igdbClient.getGamesByIds(clientId, batch).forEach {
-                igdbGames[it.id] = it
+        if (newIgdbIds.isNotEmpty()) {
+            val metadataBatches = newIgdbIds.chunked(50)
+            metadataBatches.forEachIndexed { index, batch ->
+                val progress = 0.6f + (0.2f * (index.toFloat() / metadataBatches.size))
+                onProgress(progress, "Fetching metadata for new games...")
+                
+                igdbClient.getGamesByIds(clientId, batch).forEach {
+                    igdbGamesMetadata[it.id] = it
+                }
             }
         }
 
@@ -108,35 +130,30 @@ class GameRepository(
         val totalToImport = igdbIdToSteamId.size
         igdbIdToSteamId.entries.forEachIndexed { index, (igdbId, steamAppId) ->
             val progress = 0.8f + (0.2f * (index.toFloat() / totalToImport))
-            if (index % 10 == 0) onProgress(progress, "Saving to collection...")
+            if (index % 10 == 0) onProgress(progress, "Updating library...")
 
             val steamGame = steamGames.find { it.appid.toString() == steamAppId } ?: return@forEachIndexed
-            val igdbGame = igdbGames[igdbId] ?: return@forEachIndexed
-            
-            val playtimeMinutes = steamGame.playtime_forever
-            
             val existingGame = gameDao.getGameByIgdbId(igdbId)
+            
             if (existingGame != null) {
                 val updatedPlatforms = existingGame.platforms.toMutableList()
                 if (updatedPlatforms.contains("IGDB")) updatedPlatforms.remove("IGDB")
                 if (!updatedPlatforms.contains("Steam")) updatedPlatforms.add("Steam")
                 
                 val updatedPlaytimes = existingGame.playtimes.toMutableMap()
-                updatedPlaytimes["Steam"] = playtimeMinutes
+                updatedPlaytimes["Steam"] = steamGame.playtime_forever
                 
                 val updatedSourceIds = existingGame.sourceIds.toMutableMap()
                 updatedSourceIds["STEAM"] = steamAppId
-                
-                val totalPlaytime = updatedPlaytimes.values.sum()
                 
                 gameDao.updateGame(existingGame.copy(
                     platforms = updatedPlatforms,
                     playtimes = updatedPlaytimes,
                     sourceIds = updatedSourceIds,
-                    playtimeMinutes = totalPlaytime,
-                    releaseDate = formatTimestamp(igdbGame.firstReleaseDate) // Repair date if needed
+                    playtimeMinutes = updatedPlaytimes.values.sum()
                 ))
             } else {
+                val igdbGame = igdbGamesMetadata[igdbId] ?: return@forEachIndexed
                 val game = Game(
                     title = igdbGame.name,
                     platforms = listOf("Steam"),
@@ -144,8 +161,8 @@ class GameRepository(
                     releaseDate = formatTimestamp(igdbGame.firstReleaseDate),
                     igdbId = igdbId,
                     sourceIds = mapOf("STEAM" to steamAppId),
-                    playtimes = mapOf("Steam" to playtimeMinutes),
-                    playtimeMinutes = playtimeMinutes,
+                    playtimes = mapOf("Steam" to steamGame.playtime_forever),
+                    playtimeMinutes = steamGame.playtime_forever,
                     genres = igdbGame.genres?.map { it.name } ?: emptyList()
                 )
                 gameDao.insertGame(game)
@@ -166,55 +183,73 @@ class GameRepository(
         onProgress(0.05f, "Fetching games from GOG...")
         val gogGames = gogClient.fetchPublicGames(username)
         if (gogGames.isEmpty()) return@withContext 0
-        println("GOG Sync: Found ${gogGames.size} games in total from GOG scraping")
+
+        // Local Lookup Optimization
+        val localGames = gameDao.getAllGames().first()
+        val localGogToIgdb = localGames.mapNotNull { game ->
+            val gogId = game.sourceIds["GOG"]
+            val igdbId = game.igdbId
+            if (gogId != null && igdbId != null) gogId to igdbId else null
+        }.toMap()
 
         val clientId = settingsRepository.clientId.firstOrNull() ?: return@withContext 0
         val clientSecret = settingsRepository.clientSecret.firstOrNull() ?: return@withContext 0
         igdbClient.authenticate(clientId, clientSecret)
 
-        // Step 1: Resolve GOG IDs to IGDB IDs in batches
-        val allGogIds = gogGames.map { it.gogId }
         val igdbIdToGogId = mutableMapOf<Long, String>()
-        
-        val batches = allGogIds.chunked(50)
-        batches.forEachIndexed { index, batch ->
-            val progress = 0.1f + (0.2f * (index.toFloat() / batches.size))
-            onProgress(progress, "Resolving GOG IDs on IGDB (batch ${index + 1}/${batches.size})...")
-            
-            val externalGames = igdbClient.resolveExternalGames(clientId, IgdbExternalCategory.GOG, batch)
-            externalGames.filter { it.game != null }.forEach { 
-                igdbIdToGogId[it.game!!] = it.uid 
+        val unknownGogGames = mutableListOf<GogClient.GogGame>()
+
+        gogGames.forEach { gogGame ->
+            val knownIgdbId = localGogToIgdb[gogGame.gogId]
+            if (knownIgdbId != null) {
+                igdbIdToGogId[knownIgdbId] = gogGame.gogId
+            } else {
+                unknownGogGames.add(gogGame)
             }
         }
-        println("GOG Sync: Matched ${igdbIdToGogId.size} games by GOG ID")
+
+        // Step 1: Resolve ONLY unknown GOG IDs to IGDB IDs
+        if (unknownGogGames.isNotEmpty()) {
+            val batches = unknownGogGames.map { it.gogId }.chunked(50)
+            batches.forEachIndexed { index, batch ->
+                val progress = 0.1f + (0.1f * (index.toFloat() / batches.size))
+                onProgress(progress, "Resolving new GOG IDs on IGDB...")
+                
+                val externalGames = igdbClient.resolveExternalGames(clientId, IgdbExternalCategory.GOG, batch)
+                externalGames.filter { it.game != null }.forEach { 
+                    igdbIdToGogId[it.game!!] = it.uid 
+                }
+            }
+        }
 
         // Step 2: Fallback for games not matched by ID - Search by Title
         val matchedGogIds = igdbIdToGogId.values.toSet()
-        val unmatchedGogGames = gogGames.filter { it.gogId !in matchedGogIds }
+        val unmatchedGogGames = unknownGogGames.filter { it.gogId !in matchedGogIds }
         
         unmatchedGogGames.forEachIndexed { index, gogGame ->
-            val progress = 0.3f + (0.3f * (index.toFloat() / unmatchedGogGames.size))
-            if (index % 5 == 0) onProgress(progress, "Matching remaining GOG games by title ($index/${unmatchedGogGames.size})...")
+            val progress = 0.2f + (0.4f * (index.toFloat() / unmatchedGogGames.size))
+            if (index % 5 == 0) onProgress(progress, "Matching: ${gogGame.title}...")
             
-            val results = igdbClient.searchGames(clientId, gogGame.title)
-            val match = results.find { it.name.equals(gogGame.title, ignoreCase = true) } ?: results.firstOrNull()
+            val match = findBestIgdbMatch(clientId, gogGame.title)
             if (match != null) {
                 igdbIdToGogId[match.id] = gogGame.gogId
             }
         }
-        println("GOG Sync: Total matched games after title fallback: ${igdbIdToGogId.size}")
 
-        // Step 3: Fetch full metadata
-        val igdbIds = igdbIdToGogId.keys.toList()
-        val igdbGames = mutableMapOf<Long, IgdbGame>()
+        // Step 3: Fetch metadata ONLY for IDs we don't have locally
+        val localIgdbIds = localGames.mapNotNull { it.igdbId }.toSet()
+        val newIgdbIds = igdbIdToGogId.keys.filter { it !in localIgdbIds }
+        val igdbGamesMetadata = mutableMapOf<Long, IgdbGame>()
         
-        val metadataBatches = igdbIds.chunked(50)
-        metadataBatches.forEachIndexed { index, batch ->
-            val progress = 0.6f + (0.2f * (index.toFloat() / metadataBatches.size))
-            onProgress(progress, "Fetching metadata from IGDB...")
-            
-            igdbClient.getGamesByIds(clientId, batch).forEach {
-                igdbGames[it.id] = it
+        if (newIgdbIds.isNotEmpty()) {
+            val metadataBatches = newIgdbIds.chunked(50)
+            metadataBatches.forEachIndexed { index, batch ->
+                val progress = 0.6f + (0.2f * (index.toFloat() / metadataBatches.size))
+                onProgress(progress, "Fetching metadata for new games...")
+                
+                igdbClient.getGamesByIds(clientId, batch).forEach {
+                    igdbGamesMetadata[it.id] = it
+                }
             }
         }
 
@@ -223,11 +258,9 @@ class GameRepository(
         val totalToImport = igdbIdToGogId.size
         igdbIdToGogId.entries.forEachIndexed { index, (igdbId, gogSourceId) ->
             val progress = 0.8f + (0.2f * (index.toFloat() / totalToImport))
-            if (index % 10 == 0) onProgress(progress, "Saving to collection...")
+            if (index % 10 == 0) onProgress(progress, "Updating library...")
 
             val gogGame = gogGames.find { it.gogId == gogSourceId } ?: return@forEachIndexed
-            val igdbGame = igdbGames[igdbId] ?: return@forEachIndexed
-            
             val existingGame = gameDao.getGameByIgdbId(igdbId)
             
             if (existingGame != null) {
@@ -245,10 +278,10 @@ class GameRepository(
                     platforms = updatedPlatforms,
                     playtimes = updatedPlaytimes,
                     sourceIds = updatedSourceIds,
-                    playtimeMinutes = updatedPlaytimes.values.sum(),
-                    releaseDate = formatTimestamp(igdbGame.firstReleaseDate) // Repair date if needed
+                    playtimeMinutes = updatedPlaytimes.values.sum()
                 ))
             } else {
+                val igdbGame = igdbGamesMetadata[igdbId] ?: return@forEachIndexed
                 val game = Game(
                     title = igdbGame.name,
                     platforms = listOf("GOG"),
@@ -266,6 +299,70 @@ class GameRepository(
         }
         onProgress(1.0f, "Import complete!")
         importedCount
+    }
+
+    private suspend fun findBestIgdbMatch(clientId: String, rawTitle: String): IgdbGame? {
+        // Stage 1: Exact Match (Raw)
+        val stage1 = igdbClient.searchGames(clientId, rawTitle)
+        stage1.find { it.name.equals(rawTitle, ignoreCase = true) }?.let { return it }
+
+        // Stage 2: Cleaned Match (Smart suffixes + symbol removal)
+        val cleanedTitle = cleanTitle(rawTitle)
+        val stage2 = if (cleanedTitle != rawTitle) {
+            igdbClient.searchGames(clientId, cleanedTitle)
+        } else stage1
+        stage2.find { cleanTitle(it.name).equals(cleanedTitle, ignoreCase = true) }?.let { return it }
+
+        // Stage 3: Roman Numeral Swap (4 -> IV, etc.)
+        val romanTitle = cleanedTitle.replace(" 4", " IV").replace(" 3", " III").replace(" 2", " II")
+        if (romanTitle != cleanedTitle) {
+            val stage3 = igdbClient.searchGames(clientId, romanTitle)
+            stage3.find { cleanTitle(it.name).equals(cleanTitle(romanTitle), ignoreCase = true) }?.let { return it }
+        }
+
+        // Stage 4: Broad Core Title Match (Before first colon/hyphen/plus)
+        val coreTitle = rawTitle.split(":", "-", "+", "(")[0].trim()
+        if (coreTitle.length > 3 && coreTitle != rawTitle && coreTitle != cleanedTitle) {
+            val stage4 = igdbClient.searchGames(clientId, coreTitle)
+            // Pick exact match in core search first
+            stage4.find { it.name.equals(coreTitle, ignoreCase = true) }?.let { return it }
+            // Otherwise, if any result's cleaned name contains our core title
+            stage4.find { cleanTitle(it.name).contains(cleanTitle(coreTitle), ignoreCase = true) }?.let { return it }
+        }
+
+        // Stage 5: Normalization Match (Last Resort: Remove ALL non-alphanumeric)
+        val normalizedRaw = rawTitle.filter { it.isLetterOrDigit() }.lowercase()
+        stage2.find { it.name.filter { c -> c.isLetterOrDigit() }.lowercase() == normalizedRaw }?.let { return it }
+
+        // Stage 6: Fuzzy fallback (Accept first result if it contains the cleaned title)
+        stage2.firstOrNull()?.let { 
+            if (cleanTitle(it.name).contains(cleanedTitle, ignoreCase = true)) return it 
+        }
+
+        return null
+    }
+
+    fun cleanTitle(title: String): String {
+        return title
+            .replace("®", "")
+            .replace("™", "")
+            .replace("©", "")
+            .replace(Regex("\\(.*?\\)"), "") // Remove ANY parentheses content
+            .replace("GOTY Edition", "")
+            .replace("GOTY", "")
+            .replace("Gold Edition", "")
+            .replace("Gold", "")
+            .replace("Definitive Edition", "")
+            .replace("Enhanced Edition", "")
+            .replace("Complete Season", "")
+            .replace("Complete Edition", "")
+            .replace("Classic", "")
+            .replace("2019 REBALANCE", "")
+            .replace(":", " ")
+            .replace("-", " ")
+            .replace("+", " ")
+            .replace(Regex("\\s+"), " ")
+            .trim()
     }
 
     suspend fun addGame(game: Game) {
@@ -298,6 +395,8 @@ class GameRepository(
 
     fun formatTimestamp(timestamp: Long?): String? {
         if (timestamp == null) return null
+        if (timestamp < 5000) return timestamp.toString()
+        
         return try {
             val date = Date(timestamp * 1000L)
             val format = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())

@@ -1,18 +1,21 @@
-# Walkthrough - Collapsible Group Headers & Game Counts
+# Walkthrough - Optimized Import Speed (Local Lookup First)
 
-I have enhanced the library grid to provide a better overview of your collection when using grouping (by Status, Label, or Platform).
+I have implemented a major optimization to the game synchronization process. The app now prioritizes your local database to identify games, bypassing expensive IGDB API calls for games you already own.
 
 ## Changes Made
 
-### UI Enhancements in `GameListScreen.kt`
-- **Interactive Headers:** Group headers are now clickable buttons that toggle the visibility of the games within that group.
-- **Game Counts:** Every header now displays the number of games it contains in parentheses (e.g., "Steam (198)").
-- **Collapsible Sections:** You can now hide entire sections of your library by tapping the header. This is especially helpful for managing large lists like your Steam or GOG imports.
-- **Visual Feedback:** Added an up/down arrow icon to each header to clearly indicate whether a section is expanded or collapsed.
+### 1. Local Identity Mapping
+- **[MODIFY] [GameRepository.kt](file:///var/home/hagen/Coding/AndroidStudio/DigitalCollectionManager/app/src/main/java/com/example/digitalcollectionmanager/data/repository/GameRepository.kt):**
+    - At the start of both Steam and GOG syncs, the app now builds a high-speed lookup map of your existing collection (`sourceId -> igdbId`).
+    - Every game fetched from the store is first checked against this local map.
 
-### Implementation Details
-- **State Management:** Used `mutableStateMapOf` to track the collapse status of each group by name, ensuring the state persists correctly during the current session.
-- **Conditional Rendering:** The `LazyVerticalGrid` now conditionally renders game items based on the collapsed state of their parent group, which also helps with performance for very large libraries.
+### 2. Intelligent Skip Logic
+- **Bypass Resolution:** If a game is found locally, the app **skips** the IGDB "External Game" resolution stage for that title.
+- **Bypass Metadata:** The app now only fetches full metadata (covers, genres, dates) from IGDB for **newly discovered** games. Existing games simply have their playtimes and platform tags updated.
+
+### 3. Efficiency Gains
+- **API Quota Preservation:** By skipping known games, the app drastically reduces the number of calls to IGDB.
+- **Instant Subsequent Syncs:** Once your library is imported, running another sync will be nearly instant (mostly limited by the speed of fetching the basic list from Steam/GOG).
 
 ## Verification Results
 
@@ -20,8 +23,7 @@ I have enhanced the library grid to provide a better overview of your collection
 - **Build Success:** `gradle_build(app:assembleDebug)` completed successfully.
 
 ### Manual Verification Recommended
-1.  Open the **My Games** screen.
-2.  Apply any grouping (e.g., **Group by Platform**).
-3.  Observe that headers now look like: **"Steam (198) ↑"**.
-4.  **Tap a header:** Verify that the games in that group disappear and the icon changes to a down arrow (**↓**).
-5.  **Tap again:** Verify the games reappear.
+1.  **Baseline:** Run a full sync for your library.
+2.  **Test Speed:** Run the same sync again.
+3.  **Expectation:** The second sync should finish in a few seconds (mostly showing "Updating library...") compared to the much longer first-run match process.
+4.  **Data Integrity:** Verify that playtime changes on Steam/GOG are still correctly reflected in your library after a "Fast Sync."

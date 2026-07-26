@@ -27,11 +27,11 @@ class GogClient {
     suspend fun fetchPublicGames(username: String): List<GogGame> {
         val allGames = mutableListOf<GogGame>()
         var currentPage = 1
-        var totalPages = 1
+        var totalPagesCount = 1
 
         try {
             do {
-                if (currentPage > 1) delay(200) // Small delay to prevent rate-limiting
+                if (currentPage > 1) delay(200)
 
                 val url = "https://www.gog.com/u/$username/games/stats?page=$currentPage"
                 println("GOG Sync: Fetching $url")
@@ -41,10 +41,11 @@ class GogClient {
                     header("Accept", "application/hal+json")
                 }.body()
 
-                // Extract pagination info
-                totalPages = response["pages"]?.jsonPrimitive?.int ?: 1
-                val totalGames = response["total_items"]?.jsonPrimitive?.int ?: 0
-                println("GOG Sync: Page $currentPage of $totalPages (Total games reported by GOG: $totalGames)")
+                response["pages"]?.jsonPrimitive?.intOrNull?.let { 
+                    totalPagesCount = it
+                }
+                
+                val totalGames = response["total"]?.jsonPrimitive?.intOrNull ?: 0
                 
                 val embedded = response["_embedded"]?.jsonObject
                 val items = embedded?.get("items")?.jsonArray ?: break
@@ -56,31 +57,33 @@ class GogClient {
                         val title = gameInfo?.get("title")?.jsonPrimitive?.content ?: return@mapNotNull null
                         val gogId = gameInfo["id"]?.jsonPrimitive?.content ?: ""
                         
-                        val stats = item["stats"]?.jsonObject
+                        // Handle stats being either an object or an empty array
+                        val statsElement = item["stats"]
                         var playtime = 0
-                        stats?.values?.firstOrNull()?.jsonObject?.let { userStats ->
-                            playtime = userStats["playtime"]?.jsonPrimitive?.int ?: 0
+                        if (statsElement is JsonObject) {
+                            statsElement.values.firstOrNull()?.jsonObject?.let { userStats ->
+                                playtime = userStats["playtime"]?.jsonPrimitive?.int ?: 0
+                            }
                         }
 
                         GogGame(title, playtime, gogId)
                     } catch (e: Exception) {
+                        println("GOG Sync: Error parsing game in items: ${e.message}")
                         null
                     }
                 }
-                println("GOG Sync: Successfully parsed ${pageGames.size} games from page $currentPage")
-                allGames.addAll(pageGames)
                 
-                // If we got 0 games but are supposed to have more pages, something is wrong
-                if (pageGames.isEmpty() && currentPage < totalPages) {
-                    println("GOG Sync Warning: Empty page encountered at $currentPage/$totalPages")
-                    break 
+                if (pageGames.isNotEmpty()) {
+                    allGames.addAll(pageGames)
+                    println("GOG Sync: Page $currentPage finished. Subtotal: ${allGames.size}/$totalGames")
+                } else {
+                    println("GOG Sync: No games found on page $currentPage")
                 }
 
                 currentPage++
+                if (currentPage > 50) break 
                 
-                if (currentPage > 50) break // Safety break
-                
-            } while (currentPage <= totalPages)
+            } while (currentPage <= totalPagesCount)
 
         } catch (e: Exception) {
             println("GOG Sync Critical Error: ${e.message}")

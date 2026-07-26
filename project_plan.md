@@ -119,13 +119,15 @@ Vertical grid of game covers:
 - **Navigation**: Group imports under an "Import" submenu in the `AppTopBar`.
 - **GOG Import**:
     - User provides GOG username.
-    - App fetches `https://www.gog.com/u/[user]/games` (public profile).
-    - Parse game titles and playtimes.
+    - App fetches `https://www.gog.com/u/[user]/games/stats` (JSON API).
+    - Parse game titles, IDs, and playtimes.
 - **Steam Import**:
-    - User provides Steam ID or Custom URL.
-    - App fetches `https://steamcommunity.com/id/[user]/games` (public profile).
-    - Parse game titles and playtimes.
-- **UX**: UI must inform users that profiles must be set to "Public" for this to work.
+    - User provides Steam ID or Vanity URL.
+    - App uses official **Steam Web API** (`GetOwnedGames`).
+    - Parse game titles and accurate playtimes.
+- **UX**: UI informs users about privacy settings and Steam API key requirements.
+
+**Status**: ✅ Complete — Steam API integration, GOG pagination, and fuzzy title matching implemented.
 
 ---
 
@@ -158,7 +160,7 @@ The following were discovered during file inspection and fixed directly:
 ### 📋 Pending (now re-scheduled)
 | Item | Plan Step# | Priority |
 |---|---|---|
-| Playtime Tracking & Extended Sorting | Step 8 | High |
-| GOG & Steam Public Profile Import | Step 9 | High |
+| Manually added via search from online Games Database | Step 1 | Med |
+| Export/import via CSV/JSON | Step 10 | Low |
 
 ---
