@@ -1,8 +1,8 @@
-- [ ] **GOG Parsing Fix**
-    - [ ] Update `GogClient.kt` to handle `stats: []`
-- [ ] **Matching Logic Optimization**
-    - [ ] Refactor `findBestIgdbMatch` in `GameRepository.kt` for higher leniency
-    - [ ] Update `cleanTitle` with more robust normalization
-- [ ] **Verification**
-    - [ ] Verify build
-    - [ ] Manual test: reach ~230 GOG games and match "Settlers 4"
+- [x] **ViewModel Enhancement**
+    - [x] Add `searchCustomCandidates()` to `ImportViewModel.kt`
+- [x] **UI Implementation**
+    - [x] Update `UnmatchedGameRow` with editable search field
+    - [x] Add "Search" button and loading state to row
+- [x] **Verification**
+    - [x] Verify build
+    - [ ] Manual test: refine search for an unmatched title

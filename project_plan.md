@@ -131,13 +131,24 @@ Vertical grid of game covers:
 
 ---
 
-## 10. What Is Explicitly *Not* in Scope (Step 1)
-- Multi-platform imports (beyond public profile parsing) — Step 3+.
-- Export/import via CSV/JSON — deferred until after basic CRUD is solid.
+## 10. Feature – Data Portability (Export/Import)
+- **CSV Export**:
+    - Users can export their entire library to a CSV file.
+    - File includes titles, platforms, playtimes, genres, and metadata.
+    - Uses Android's Storage Access Framework for secure saving.
+- **CSV Import**: Allow users to re-import collections from CSV.
+
+**Status**: 🛠️ Partially Complete — CSV Export implemented.
 
 ---
 
-## 11. Project Plan Update Log (post-inspection)
+## 11. What Is Explicitly *Not* in Scope (Step 1)
+- Multi-platform imports (beyond public profile parsing) — Step 3+.
+- Advanced cloud sync (deferred until after basic portability is solid).
+
+---
+
+## 12. Project Plan Update Log (post-inspection)
 
 The following were discovered during file inspection and fixed directly:
 
@@ -161,6 +172,6 @@ The following were discovered during file inspection and fixed directly:
 | Item | Plan Step# | Priority |
 |---|---|---|
 | Manually added via search from online Games Database | Step 1 | Med |
-| Export/import via CSV/JSON | Step 10 | Low |
+| CSV/JSON Import | Step 10 | Low |
 
 ---

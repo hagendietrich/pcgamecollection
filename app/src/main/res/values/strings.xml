@@ -2,7 +2,8 @@
     <string name="app_name">Digital Collection Manager</string>
     <string name="menu_my_games">My Games</string>
     <string name="menu_add_game">Add Game</string>
-    <string name="menu_import">Import Games</string>
+    <string name="menu_import">Import/Export Games</string>
+    <string name="import_export_title">Import/Export</string>
     <string name="menu_settings">Settings (IGDB)</string>
     <string name="library_title">My Collection</string>
     <string name="library_empty">Your collection is empty. Tap + to add games!</string>

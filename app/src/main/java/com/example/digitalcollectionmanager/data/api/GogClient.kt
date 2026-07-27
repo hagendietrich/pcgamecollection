@@ -48,7 +48,10 @@ class GogClient {
                 val totalGames = response["total"]?.jsonPrimitive?.intOrNull ?: 0
                 
                 val embedded = response["_embedded"]?.jsonObject
-                val items = embedded?.get("items")?.jsonArray ?: break
+                val items = embedded?.get("items")?.jsonArray ?: run {
+                    println("GOG Sync Warning: No items array found on page $currentPage. Raw Response: $response")
+                    null
+                } ?: break
                 
                 val pageGames = items.mapNotNull { itemElement ->
                     try {
@@ -77,7 +80,7 @@ class GogClient {
                     allGames.addAll(pageGames)
                     println("GOG Sync: Page $currentPage finished. Subtotal: ${allGames.size}/$totalGames")
                 } else {
-                    println("GOG Sync: No games found on page $currentPage")
+                    println("GOG Sync: No games found on page $currentPage. Full response: $response")
                 }
 
                 currentPage++

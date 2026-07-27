@@ -1,29 +1,28 @@
-# Walkthrough - Optimized Import Speed (Local Lookup First)
+# Walkthrough - Custom Search for Manual Matching
 
-I have implemented a major optimization to the game synchronization process. The app now prioritizes your local database to identify games, bypassing expensive IGDB API calls for games you already own.
+I have implemented a **Custom Search** feature within the manual matching step. This allows you to refine or completely change the search query if the automatic matching doesn't find the correct game on IGDB.
 
 ## Changes Made
 
-### 1. Local Identity Mapping
-- **[MODIFY] [GameRepository.kt](file:///var/home/hagen/Coding/AndroidStudio/DigitalCollectionManager/app/src/main/java/com/example/digitalcollectionmanager/data/repository/GameRepository.kt):**
-    - At the start of both Steam and GOG syncs, the app now builds a high-speed lookup map of your existing collection (`sourceId -> igdbId`).
-    - Every game fetched from the store is first checked against this local map.
+### 1. Refined Resolution UI
+- **[MODIFY] [ImportScreen.kt](file:///var/home/hagen/Coding/AndroidStudio/DigitalCollectionManager/app/src/main/java/com/example/digitalcollectionmanager/ui/screens/ImportScreen.kt):**
+    - Added an editable text field to the expanded **"Resolve"** section for each unmatched game.
+    - Added a **"Search"** button that triggers a new search on IGDB using your custom text.
+    - The search text defaults to the title found in your Steam/GOG library.
 
-### 2. Intelligent Skip Logic
-- **Bypass Resolution:** If a game is found locally, the app **skips** the IGDB "External Game" resolution stage for that title.
-- **Bypass Metadata:** The app now only fetches full metadata (covers, genres, dates) from IGDB for **newly discovered** games. Existing games simply have their playtimes and platform tags updated.
-
-### 3. Efficiency Gains
-- **API Quota Preservation:** By skipping known games, the app drastically reduces the number of calls to IGDB.
-- **Instant Subsequent Syncs:** Once your library is imported, running another sync will be nearly instant (mostly limited by the speed of fetching the basic list from Steam/GOG).
+### 2. ViewModel Search Logic
+- **[MODIFY] [ImportViewModel.kt](file:///var/home/hagen/Coding/AndroidStudio/DigitalCollectionManager/app/src/main/java/com/example/digitalcollectionmanager/ui/viewmodel/ImportViewModel.kt):**
+    - Added `searchCustomCandidates()` to handle the logic of fetching new candidates from IGDB and updating the UI state in real-time.
 
 ## Verification Results
 
 ### Automated Tests
-- **Build Success:** `gradle_build(app:assembleDebug)` completed successfully.
+- **Build Success:** `gradle_build(app:assembleDebug)` passed successfully.
 
 ### Manual Verification Recommended
-1.  **Baseline:** Run a full sync for your library.
-2.  **Test Speed:** Run the same sync again.
-3.  **Expectation:** The second sync should finish in a few seconds (mostly showing "Updating library...") compared to the much longer first-run match process.
-4.  **Data Integrity:** Verify that playtime changes on Steam/GOG are still correctly reflected in your library after a "Fast Sync."
+1.  **Sync Library:** Run a sync that results in unmatched games.
+2.  **Open Resolve:** Tap **Resolve** on an unmatched title.
+3.  **Refine Search:**
+    - If no matches appear (e.g., for a title like "Gothic 1 Classic"), edit the text to just "Gothic".
+    - Tap **Search**.
+4.  **Confirm Results:** Verify that the list updates with fresh results for "Gothic". You can then select the correct one to complete the import.

@@ -1,28 +1,32 @@
-# Implementation Plan - GOG Parsing & Matching Fixes
+# Implementation Plan - Custom Search for Manual Matching
 
-This plan fixes the incomplete GOG import by correctly handling empty stats arrays and improves the title matching success rate for games with complex names.
+This plan allows users to manually refine the search query when resolving unmatched games from Steam or GOG. This is useful when the store title is so different from the IGDB title that the automatic "Best Guess" search returns no results.
 
 ## Proposed Changes
 
-### GOG Client
+### ViewModels
 
-#### [MODIFY] [GogClient.kt](file:///var/home/hagen/Coding/AndroidStudio/DigitalCollectionManager/app/src/main/java/com/example/digitalcollectionmanager/data/api/GogClient.kt)
-- **Safe Stats Parsing:** Updated the JSON traversal to check if the `stats` field is a `JsonObject` before attempting to access user-specific stats. If it's a `JsonArray` (empty stats), it will now correctly default to 0 playtime instead of skipping the game.
+#### [MODIFY] [ImportViewModel.kt](file:///var/home/hagen/Coding/AndroidStudio/DigitalCollectionManager/app/src/main/java/com/example/digitalcollectionmanager/ui/viewmodel/ImportViewModel.kt)
+- Add `searchCustomCandidates(unmatched: UnmatchedGame, query: String)`:
+    - This will call `gameRepository.searchGames(query)`.
+    - It will then update the `unmatchedGames` list in the current `ImportUiState.Success` by replacing the specific `UnmatchedGame` object with a copy containing the new candidates.
 
-### Repository & Sync Logic
+### UI Layer
 
-#### [MODIFY] [GameRepository.kt](file:///var/home/hagen/Coding/AndroidStudio/DigitalCollectionManager/app/src/main/java/com/example/digitalcollectionmanager/data/repository/GameRepository.kt)
-- **Enhanced `findBestIgdbMatch`:**
-    - Use results from the **Cleaned Search** for the final fuzzy fallback, as the raw search is often too narrow.
-    - Normalize titles by removing ALL non-alphanumeric characters for a "Last Resort" comparison.
-    - Handle `4` -> `IV` and `IV` -> `4` bidirectional swaps.
-- **Suffix Cleanup:** Added more specific GOG and Steam suffixes to the filter list.
+#### [MODIFY] [ImportScreen.kt](file:///var/home/hagen/Coding/AndroidStudio/DigitalCollectionManager/app/src/main/java/com/example/digitalcollectionmanager/ui/screens/ImportScreen.kt)
+- **Update `UnmatchedGameRow`:**
+    - Add a `mutableStateOf` for the search text, initialized with the store title.
+    - Add an `OutlinedTextField` and a "Search" button inside the expanded section.
+    - When "Search" is clicked, trigger the new ViewModel function.
+    - Show a small loading indicator while the custom search is in progress.
 
 ## Verification Plan
 
 ### Manual Verification
-1.  **Run GOG Sync:** Enter `tarrega8472`.
-2.  **Verify Count:** It should now successfully parse all games across all pages (230+).
-3.  **Verify Specific Matches:**
-    - Check if `The Settlers 4` is now found.
-    - Check if `Deus Ex GOTY` is now found.
+1.  **Run Sync:** Trigger a sync that results in unmatched games (e.g., GOG sync).
+2.  **Open Resolve:** Expand an unmatched game row.
+3.  **Perform Custom Search:**
+    - If no results are found for "Gothic 1 Classic", change the text to just "Gothic".
+    - Tap **Search**.
+    - Verify that a new list of candidates (Gothic, Gothic II, etc.) appears.
+4.  **Confirm Selection:** Pick the correct game and verify it imports correctly.

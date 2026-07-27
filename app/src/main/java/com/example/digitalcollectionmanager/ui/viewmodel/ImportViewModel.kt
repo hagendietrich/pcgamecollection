@@ -2,8 +2,12 @@ package com.example.digitalcollectionmanager.ui.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import android.content.ContentResolver
+import android.net.Uri
+import com.example.digitalcollectionmanager.data.api.models.IgdbGame
 import com.example.digitalcollectionmanager.data.repository.GameRepository
 import com.example.digitalcollectionmanager.data.repository.SettingsRepository
+import com.example.digitalcollectionmanager.data.repository.UnmatchedGame
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -37,15 +41,19 @@ class ImportViewModel(
             settingsRepository.saveLastSteamId(profileUrl)
             _uiState.value = ImportUiState.Loading(0f, "Initializing Steam import...")
             try {
-                val count = gameRepository.syncSteamGames(profileUrl) { progress, message ->
+                val result = gameRepository.syncSteamGames(profileUrl) { progress, message ->
                     _uiState.value = ImportUiState.Loading(progress, message)
                 }
                 when {
-                    count == -1 -> {
+                    result.importedCount == -1 -> {
                         _uiState.value = ImportUiState.Error("Steam API Key is missing. Please configure it in Settings.")
                     }
-                    count > 0 -> {
-                        _uiState.value = ImportUiState.Success("Successfully imported $count games from Steam.")
+                    result.importedCount >= 0 -> {
+                        val msg = if (result.importedCount > 0) 
+                            "Successfully imported ${result.importedCount} games from Steam."
+                        else "Steam library checked. No new games were added."
+                        
+                        _uiState.value = ImportUiState.Success(msg, result.unmatchedGames)
                     }
                     else -> {
                         _uiState.value = ImportUiState.Error("No games found. Check your Steam ID or Privacy Settings.")
@@ -63,11 +71,15 @@ class ImportViewModel(
             settingsRepository.saveLastGogUsername(username)
             _uiState.value = ImportUiState.Loading(0f, "Initializing GOG import...")
             try {
-                val count = gameRepository.syncGogGames(username) { progress, message ->
+                val result = gameRepository.syncGogGames(username) { progress, message ->
                     _uiState.value = ImportUiState.Loading(progress, message)
                 }
-                if (count > 0) {
-                    _uiState.value = ImportUiState.Success("Successfully imported $count games from GOG.")
+                if (result.importedCount >= 0) {
+                    val msg = if (result.importedCount > 0)
+                        "Successfully imported ${result.importedCount} games from GOG."
+                    else "GOG library checked. No new games were added."
+                    
+                    _uiState.value = ImportUiState.Success(msg, result.unmatchedGames)
                 } else {
                     _uiState.value = ImportUiState.Error("No games found. Ensure your profile is public.")
                 }
@@ -77,14 +89,63 @@ class ImportViewModel(
         }
     }
 
+    fun resolveUnmatchedGame(unmatched: UnmatchedGame, selection: IgdbGame) {
+        viewModelScope.launch {
+            gameRepository.linkGameManually(unmatched, selection)
+            
+            // Remove from the current list in UI
+            val currentState = _uiState.value
+            if (currentState is ImportUiState.Success) {
+                val updatedList = currentState.unmatchedGames.filter { it != unmatched }
+                _uiState.value = currentState.copy(unmatchedGames = updatedList)
+            }
+        }
+    }
+
+    fun searchCustomCandidates(unmatched: UnmatchedGame, query: String) {
+        viewModelScope.launch {
+            try {
+                val newCandidates = gameRepository.searchGames(query)
+                val currentState = _uiState.value
+                if (currentState is ImportUiState.Success) {
+                    val updatedList = currentState.unmatchedGames.map { 
+                        if (it == unmatched) it.copy(candidates = newCandidates.take(10)) else it 
+                    }
+                    _uiState.value = currentState.copy(unmatchedGames = updatedList)
+                }
+            } catch (e: Exception) {
+                // Silently fail or log, since it's a sub-search
+                println("Custom Search Error: ${e.message}")
+            }
+        }
+    }
+
     fun resetState() {
         _uiState.value = ImportUiState.Idle
+    }
+
+    fun exportToCsv(uri: Uri, contentResolver: ContentResolver) {
+        viewModelScope.launch {
+            _uiState.value = ImportUiState.Loading(0.5f, "Generating CSV file...")
+            try {
+                val csvContent = gameRepository.generateCsvContent()
+                contentResolver.openOutputStream(uri)?.use { outputStream ->
+                    outputStream.write(csvContent.toByteArray())
+                }
+                _uiState.value = ImportUiState.Success("Collection exported successfully!")
+            } catch (e: Exception) {
+                _uiState.value = ImportUiState.Error("Export failed: ${e.message}")
+            }
+        }
     }
 }
 
 sealed class ImportUiState {
     object Idle : ImportUiState()
     data class Loading(val progress: Float, val message: String) : ImportUiState()
-    data class Success(val message: String) : ImportUiState()
+    data class Success(
+        val message: String, 
+        val unmatchedGames: List<UnmatchedGame> = emptyList()
+    ) : ImportUiState()
     data class Error(val message: String) : ImportUiState()
 }

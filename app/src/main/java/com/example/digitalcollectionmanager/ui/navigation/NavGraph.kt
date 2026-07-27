@@ -20,7 +20,7 @@ sealed class Screen(val route: String) {
     object Library : Screen("library")
     object AddGame : Screen("add_game")
     object Setup : Screen("setup")
-    object Import : Screen("import")
+    object ImportExport : Screen("import_export")
 }
 
 @Composable
@@ -67,7 +67,7 @@ fun AppNavGraph(
                 onBack = { navController.popBackStack() }
             )
         }
-        composable(Screen.Import.route) {
+        composable(Screen.ImportExport.route) {
             val viewModel: ImportViewModel = viewModel(
                 factory = object : ViewModelProvider.Factory {
                     override fun <T : ViewModel> create(modelClass: Class<T>): T {

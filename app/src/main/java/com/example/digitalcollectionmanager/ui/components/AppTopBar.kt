@@ -1,10 +1,14 @@
 package com.example.digitalcollectionmanager.ui.components
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import com.example.digitalcollectionmanager.R
 import com.example.digitalcollectionmanager.ui.navigation.Screen
@@ -22,42 +26,44 @@ fun AppTopBar(
         title = { Text(title) },
         actions = {
             actions()
-            IconButton(onClick = { showMenu = true }) {
-                Icon(Icons.Default.MoreVert, contentDescription = "Menu")
-            }
-            DropdownMenu(
-                expanded = showMenu,
-                onDismissRequest = { showMenu = false }
-            ) {
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.menu_my_games)) },
-                    onClick = {
-                        showMenu = false
-                        onNavigate(Screen.Library.route)
-                    }
-                )
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.menu_add_game)) },
-                    onClick = {
-                        showMenu = false
-                        onNavigate(Screen.AddGame.route)
-                    }
-                )
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.menu_import)) },
-                    onClick = {
-                        showMenu = false
-                        onNavigate(Screen.Import.route)
-                    }
-                )
-                HorizontalDivider()
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.menu_settings)) },
-                    onClick = {
-                        showMenu = false
-                        onNavigate(Screen.Setup.route)
-                    }
-                )
+            Box(modifier = Modifier.wrapContentSize(Alignment.TopEnd)) {
+                IconButton(onClick = { showMenu = true }) {
+                    Icon(Icons.Default.MoreVert, contentDescription = "Menu")
+                }
+                DropdownMenu(
+                    expanded = showMenu,
+                    onDismissRequest = { showMenu = false }
+                ) {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.menu_my_games)) },
+                        onClick = {
+                            showMenu = false
+                            onNavigate(Screen.Library.route)
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.menu_add_game)) },
+                        onClick = {
+                            showMenu = false
+                            onNavigate(Screen.AddGame.route)
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.menu_import)) },
+                        onClick = {
+                            showMenu = false
+                            onNavigate(Screen.ImportExport.route)
+                        }
+                    )
+                    HorizontalDivider()
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.menu_settings)) },
+                        onClick = {
+                            showMenu = false
+                            onNavigate(Screen.Setup.route)
+                        }
+                    )
+                }
             }
         }
     )

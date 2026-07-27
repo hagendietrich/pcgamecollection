@@ -71,7 +71,7 @@ fun GameListScreen(
                     onNavigate = onNavigate,
                     actions = {
                         // Grouping Button
-                        Box {
+                        Box(modifier = Modifier.wrapContentSize(Alignment.TopEnd)) {
                             IconButton(onClick = { showGroupingMenu = true }) {
                                 Icon(Icons.Default.GroupWork, contentDescription = "Group")
                             }
@@ -99,7 +99,7 @@ fun GameListScreen(
                         }
 
                         // Sorting Button
-                        Box {
+                        Box(modifier = Modifier.wrapContentSize(Alignment.TopEnd)) {
                             IconButton(onClick = { showSortMenu = true }) {
                                 Icon(
                                     imageVector = Icons.AutoMirrored.Filled.Sort,
@@ -335,7 +335,7 @@ fun MultiSelectTopBar(
             }
         },
         actions = {
-            Box {
+            Box(modifier = Modifier.wrapContentSize(Alignment.TopEnd)) {
                 TextButton(onClick = { showStatusMenu = true }) {
                     Text("Status")
                 }
@@ -426,7 +426,7 @@ fun GameDetailContent(
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Status: ", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
             var expanded by remember { mutableStateOf(false) }
-            Box {
+            Box(modifier = Modifier.wrapContentSize(Alignment.TopEnd)) {
                 TextButton(onClick = { expanded = true }) {
                     Text(game.completionStatus.name)
                 }
