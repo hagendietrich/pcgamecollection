@@ -21,6 +21,9 @@ interface GameDao {
     @Delete
     suspend fun deleteGame(game: Game)
 
+    @Query("DELETE FROM games")
+    suspend fun deleteAllGames()
+
     @Query("SELECT * FROM games WHERE id = :id")
     suspend fun getGameById(id: Int): Game?
 

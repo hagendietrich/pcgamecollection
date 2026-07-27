@@ -12,6 +12,8 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -608,26 +610,44 @@ class GameRepository(
     }
 
     /**
-     * Generates a CSV string representing the entire game collection.
+     * Generates a JSON string representing the entire game collection.
      */
-    suspend fun generateCsvContent(): String = withContext(Dispatchers.IO) {
+    suspend fun generateJsonContent(): String = withContext(Dispatchers.IO) {
         val games = gameDao.getAllGames().first()
-        val csv = StringBuilder()
+        val json = Json { prettyPrint = true }
+        json.encodeToString(games)
+    }
+
+    /**
+     * Imports games from a JSON string.
+     */
+    suspend fun importFromJson(jsonString: String) = withContext(Dispatchers.IO) {
+        val json = Json { ignoreUnknownKeys = true; coerceInputValues = true }
+        val importedGames: List<Game> = json.decodeFromString(jsonString)
+        val localGames = gameDao.getAllGames().first()
         
-        // Header
-        csv.append("Title,Platforms,Release Date,Playtime (Minutes),Genres,Labels,Status,IGDB ID\n")
-        
-        games.forEach { game ->
-            csv.append("\"${game.title.replace("\"", "\"\"")}\",")
-            csv.append("\"${game.platforms.joinToString(", ").replace("\"", "\"\"")}\",")
-            csv.append("\"${game.releaseDate ?: ""}\",")
-            csv.append("${game.playtimeMinutes},")
-            csv.append("\"${game.genres.joinToString(", ").replace("\"", "\"\"")}\",")
-            csv.append("\"${game.labels.joinToString(", ").replace("\"", "\"\"")}\",")
-            csv.append("\"${game.completionStatus.name}\",")
-            csv.append("${game.igdbId ?: ""}\n")
+        // Deduplicate: Map imported games to existing local IDs where possible
+        val mergedGames = importedGames.map { imported ->
+            val existing = localGames.find { local ->
+                (imported.igdbId != null && local.igdbId == imported.igdbId) ||
+                (local.title.equals(imported.title, ignoreCase = true))
+            }
+            if (existing != null) {
+                // Keep the database ID of the existing record to trigger an UPDATE instead of an INSERT
+                imported.copy(id = existing.id)
+            } else {
+                // No match found, insert as a new game
+                imported.copy(id = 0)
+            }
         }
         
-        csv.toString()
+        gameDao.insertGames(mergedGames)
+    }
+
+    /**
+     * Wipes the entire game collection.
+     */
+    suspend fun clearLibrary() = withContext(Dispatchers.IO) {
+        gameDao.deleteAllGames()
     }
 }

@@ -2,7 +2,9 @@ package com.example.digitalcollectionmanager.data.model
 
 import androidx.room.Entity
 import androidx.room.PrimaryKey
+import kotlinx.serialization.Serializable
 
+@Serializable
 @Entity(tableName = "games")
 data class Game(
     @PrimaryKey(autoGenerate = true)

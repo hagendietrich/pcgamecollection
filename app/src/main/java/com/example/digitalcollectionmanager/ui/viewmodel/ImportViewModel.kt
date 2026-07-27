@@ -178,17 +178,42 @@ class ImportViewModel(
         _uiState.value = ImportUiState.Idle
     }
 
-    fun exportToCsv(uri: Uri, contentResolver: ContentResolver) {
+    fun exportToJson(uri: Uri, contentResolver: ContentResolver) {
         viewModelScope.launch {
-            _uiState.value = ImportUiState.Loading(0.5f, "Generating CSV file...")
+            _uiState.value = ImportUiState.Loading(0.5f, "Generating JSON backup...")
             try {
-                val csvContent = gameRepository.generateCsvContent()
+                val jsonContent = gameRepository.generateJsonContent()
                 contentResolver.openOutputStream(uri)?.use { outputStream ->
-                    outputStream.write(csvContent.toByteArray())
+                    outputStream.write(jsonContent.toByteArray())
                 }
-                _uiState.value = ImportUiState.Success("Collection exported successfully!")
+                _uiState.value = ImportUiState.Success("Library exported successfully!")
             } catch (e: Exception) {
                 _uiState.value = ImportUiState.Error("Export failed: ${e.message}")
+            }
+        }
+    }
+
+    fun importFromJson(uri: Uri, contentResolver: ContentResolver) {
+        viewModelScope.launch {
+            _uiState.value = ImportUiState.Loading(0.3f, "Reading JSON file...")
+            try {
+                val jsonString = contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } ?: ""
+                gameRepository.importFromJson(jsonString)
+                _uiState.value = ImportUiState.Success("Library imported successfully!")
+            } catch (e: Exception) {
+                _uiState.value = ImportUiState.Error("Import failed: ${e.message}")
+            }
+        }
+    }
+
+    fun wipeLibrary() {
+        viewModelScope.launch {
+            _uiState.value = ImportUiState.Loading(0.5f, "Wiping library...")
+            try {
+                gameRepository.clearLibrary()
+                _uiState.value = ImportUiState.Success("Library has been cleared.")
+            } catch (e: Exception) {
+                _uiState.value = ImportUiState.Error("Failed to clear library: ${e.message}")
             }
         }
     }

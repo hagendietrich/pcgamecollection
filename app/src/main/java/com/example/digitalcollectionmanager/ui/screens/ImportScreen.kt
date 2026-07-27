@@ -1,5 +1,6 @@
 package com.example.digitalcollectionmanager.ui.screens
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -37,11 +38,18 @@ fun ImportScreen(
 
     var steamUrl by remember(lastSteamId) { mutableStateOf(lastSteamId) }
     var gogUsername by remember(lastGogUsername) { mutableStateOf(lastGogUsername) }
+    var showWipeConfirm by remember { mutableStateOf(false) }
 
-    val csvExportLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.CreateDocument("text/csv")
+    val jsonExportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/json")
     ) { uri ->
-        uri?.let { viewModel.exportToCsv(it, context.contentResolver) }
+        uri?.let { viewModel.exportToJson(it, context.contentResolver) }
+    }
+
+    val jsonImportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri ->
+        uri?.let { viewModel.importFromJson(it, context.contentResolver) }
     }
 
     val playniteLauncher = rememberLauncherForActivityResult(
@@ -228,24 +236,88 @@ fun ImportScreen(
                 item {
                     Card(modifier = Modifier.fillMaxWidth()) {
                         Column(modifier = Modifier.padding(16.dp)) {
-                            Text("Export Collection", style = MaterialTheme.typography.titleMedium)
+                            Text("Data Portability", style = MaterialTheme.typography.titleMedium)
                             Text(
-                                "Backup your entire library to a CSV file.",
+                                "Backup your entire library to a JSON file or restore from a previous backup.",
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier.padding(vertical = 8.dp)
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.End
+                            ) {
+                                OutlinedButton(
+                                    onClick = { jsonImportLauncher.launch("application/json") },
+                                    enabled = uiState !is ImportUiState.Loading,
+                                    modifier = Modifier.padding(end = 8.dp)
+                                ) {
+                                    Text("Import (JSON)")
+                                }
+                                Button(
+                                    onClick = { jsonExportLauncher.launch("digital_collection_backup.json") },
+                                    enabled = uiState !is ImportUiState.Loading
+                                ) {
+                                    Text("Export (JSON)")
+                                }
+                            }
+                        }
+                    }
+                }
+
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.1f)),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.error)
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text(
+                                "Danger Zone", 
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                            Text(
+                                "Permanently delete all games and data from your local library.",
                                 style = MaterialTheme.typography.bodySmall,
                                 modifier = Modifier.padding(vertical = 8.dp)
                             )
                             Button(
-                                onClick = { csvExportLauncher.launch("digital_collection_export.csv") },
+                                onClick = { showWipeConfirm = true },
                                 modifier = Modifier.align(Alignment.End),
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
                                 enabled = uiState !is ImportUiState.Loading
                             ) {
-                                Text("Export to CSV")
+                                Text("Delete Library")
                             }
                         }
                     }
                 }
             }
         }
+    }
+
+    if (showWipeConfirm) {
+        AlertDialog(
+            onDismissRequest = { showWipeConfirm = false },
+            title = { Text("Delete Entire Library?") },
+            text = { Text("This will permanently remove all games, playtimes, genres, and labels. This action cannot be undone. We recommend exporting a JSON backup first.") },
+            confirmButton = {
+                Button(
+                    onClick = { 
+                        viewModel.wipeLibrary()
+                        showWipeConfirm = false 
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Delete Everything")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showWipeConfirm = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 }
 
