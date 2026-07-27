@@ -4,5 +4,6 @@ enum class GroupingType {
     NONE,
     STATUS,
     LABEL,
-    PLATFORM
+    PLATFORM,
+    GENRE
 }

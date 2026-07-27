@@ -3,9 +3,9 @@ package com.example.digitalcollectionmanager.data.repository
 import com.example.digitalcollectionmanager.data.api.GogClient
 import com.example.digitalcollectionmanager.data.api.IgdbClient
 import com.example.digitalcollectionmanager.data.api.SteamClient
-import com.example.digitalcollectionmanager.data.api.models.IgdbExternalCategory
-import com.example.digitalcollectionmanager.data.api.models.IgdbGame
+import com.example.digitalcollectionmanager.data.api.models.*
 import com.example.digitalcollectionmanager.data.dao.GameDao
+import com.example.digitalcollectionmanager.data.model.CompletionStatus
 import com.example.digitalcollectionmanager.data.model.Game
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -335,6 +335,102 @@ class GameRepository(
             }
         }
         onProgress(1.0f, "Import complete!")
+        SyncResult(importedCount, unmatchedGames)
+    }
+
+    /**
+     * Syncs games from a Playnite JSON export.
+     */
+    suspend fun syncPlayniteGames(
+        playniteGames: List<PlayniteGame>,
+        statusMapping: Map<String, CompletionStatus>,
+        onProgress: (progress: Float, message: String) -> Unit = { _, _ -> }
+    ): SyncResult = withContext(Dispatchers.IO) {
+        val clientId = settingsRepository.clientId.firstOrNull() ?: return@withContext SyncResult(0)
+        val clientSecret = settingsRepository.clientSecret.firstOrNull() ?: return@withContext SyncResult(0)
+        igdbClient.authenticate(clientId, clientSecret)
+
+        val localGames = gameDao.getAllGames().first()
+        val igdbIdToPlayniteGame = mutableMapOf<Long, PlayniteGame>()
+        val unmatchedGames = mutableListOf<UnmatchedGame>()
+
+        playniteGames.forEachIndexed { index, pGame ->
+            val progress = 0.1f + (0.7f * (index.toFloat() / playniteGames.size))
+            if (index % 10 == 0) onProgress(progress, "Matching: ${pGame.name}...")
+
+            val match = findBestIgdbMatch(clientId, pGame.name)
+            if (match != null) {
+                igdbIdToPlayniteGame[match.id] = pGame
+            } else {
+                val candidates = igdbClient.searchGames(clientId, cleanTitle(pGame.name))
+                unmatchedGames.add(UnmatchedGame(
+                    storeTitle = pGame.name,
+                    storeId = pGame.gameId ?: "N/A",
+                    platform = pGame.source?.name ?: "Playnite",
+                    playtimeMinutes = (pGame.playtime / 60).toInt(),
+                    candidates = candidates.take(10)
+                ))
+            }
+        }
+
+        // Fetch metadata for new games
+        val localIgdbIds = localGames.mapNotNull { it.igdbId }.toSet()
+        val newIgdbIds = igdbIdToPlayniteGame.keys.filter { it !in localIgdbIds }
+        val igdbGamesMetadata = mutableMapOf<Long, IgdbGame>()
+
+        if (newIgdbIds.isNotEmpty()) {
+            val metadataBatches = newIgdbIds.chunked(50)
+            metadataBatches.forEachIndexed { index, batch ->
+                val progress = 0.8f + (0.1f * (index.toFloat() / metadataBatches.size))
+                onProgress(progress, "Fetching metadata...")
+                igdbClient.getGamesByIds(clientId, batch).forEach {
+                    igdbGamesMetadata[it.id] = it
+                }
+            }
+        }
+
+        var importedCount = 0
+        igdbIdToPlayniteGame.entries.forEachIndexed { index, (igdbId, pGame) ->
+            val progress = 0.9f + (0.1f * (index.toFloat() / igdbIdToPlayniteGame.size))
+            if (index % 10 == 0) onProgress(progress, "Updating library...")
+
+            val existingGame = gameDao.getGameByIgdbId(igdbId)
+            val playtimeMin = (pGame.playtime / 60).toInt()
+            val sourcePlatform = pGame.source?.name ?: "Playnite"
+            val status = pGame.completionStatus?.name?.let { statusMapping[it] } ?: CompletionStatus.BACKLOG
+
+            if (existingGame != null) {
+                val updatedPlatforms = existingGame.platforms.toMutableList()
+                if (!updatedPlatforms.contains(sourcePlatform)) updatedPlatforms.add(sourcePlatform)
+                
+                val updatedPlaytimes = existingGame.playtimes.toMutableMap()
+                updatedPlaytimes[sourcePlatform] = playtimeMin
+                
+                gameDao.updateGame(existingGame.copy(
+                    platforms = updatedPlatforms,
+                    playtimes = updatedPlaytimes,
+                    playtimeMinutes = updatedPlaytimes.values.sum(),
+                    completionStatus = status
+                ))
+            } else {
+                val igdbGame = igdbGamesMetadata[igdbId] ?: return@forEachIndexed
+                val game = Game(
+                    title = igdbGame.name,
+                    platforms = listOf(sourcePlatform),
+                    coverImageUrl = getFullCoverUrl(igdbGame.cover?.url),
+                    releaseDate = pGame.releaseDate?.releaseDate ?: formatTimestamp(igdbGame.firstReleaseDate),
+                    igdbId = igdbId,
+                    playtimes = mapOf(sourcePlatform to playtimeMin),
+                    playtimeMinutes = playtimeMin,
+                    genres = igdbGame.genres?.map { it.name } ?: emptyList(),
+                    completionStatus = status
+                )
+                gameDao.insertGame(game)
+                importedCount++
+            }
+        }
+
+        onProgress(1.0f, "Playnite import complete!")
         SyncResult(importedCount, unmatchedGames)
     }
 

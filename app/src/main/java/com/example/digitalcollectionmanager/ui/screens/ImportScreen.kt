@@ -16,10 +16,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import com.example.digitalcollectionmanager.R
 import com.example.digitalcollectionmanager.data.api.models.IgdbGame
+import com.example.digitalcollectionmanager.data.model.CompletionStatus
 import com.example.digitalcollectionmanager.data.repository.UnmatchedGame
 import com.example.digitalcollectionmanager.ui.components.AppTopBar
 import com.example.digitalcollectionmanager.ui.viewmodel.ImportUiState
 import com.example.digitalcollectionmanager.ui.viewmodel.ImportViewModel
+import com.example.digitalcollectionmanager.ui.viewmodel.PlayniteImportState
 
 @Composable
 fun ImportScreen(
@@ -30,6 +32,7 @@ fun ImportScreen(
     val uiState by viewModel.uiState.collectAsState()
     val lastSteamId by viewModel.lastSteamId.collectAsState()
     val lastGogUsername by viewModel.lastGogUsername.collectAsState()
+    val playniteImportState by viewModel.playniteImportState.collectAsState()
     val context = LocalContext.current
 
     var steamUrl by remember(lastSteamId) { mutableStateOf(lastSteamId) }
@@ -39,6 +42,21 @@ fun ImportScreen(
         contract = ActivityResultContracts.CreateDocument("text/csv")
     ) { uri ->
         uri?.let { viewModel.exportToCsv(it, context.contentResolver) }
+    }
+
+    val playniteLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri ->
+        uri?.let { viewModel.parsePlayniteJson(it, context.contentResolver) }
+    }
+
+    if (playniteImportState is PlayniteImportState.MappingRequired) {
+        val mappingRequired = playniteImportState as PlayniteImportState.MappingRequired
+        StatusMappingDialog(
+            uniqueStatuses = mappingRequired.uniqueStatuses,
+            onConfirm = { mapping -> viewModel.startPlayniteImport(mapping) },
+            onDismiss = { viewModel.cancelPlayniteImport() }
+        )
     }
 
     Scaffold(
@@ -57,14 +75,6 @@ fun ImportScreen(
                 .padding(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text(
-                text = stringResource(R.string.menu_import),
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold
-            )
-            
-            Spacer(modifier = Modifier.height(16.dp))
-
             // Status Display
             when (val state = uiState) {
                 is ImportUiState.Loading -> {
@@ -198,6 +208,26 @@ fun ImportScreen(
                 item {
                     Card(modifier = Modifier.fillMaxWidth()) {
                         Column(modifier = Modifier.padding(16.dp)) {
+                            Text("Playnite Import", style = MaterialTheme.typography.titleMedium)
+                            Text(
+                                "Import games from a Playnite JSON export file.",
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier.padding(vertical = 8.dp)
+                            )
+                            Button(
+                                onClick = { playniteLauncher.launch("application/json") },
+                                modifier = Modifier.align(Alignment.End),
+                                enabled = uiState !is ImportUiState.Loading
+                            ) {
+                                Text("Select Playnite JSON")
+                            }
+                        }
+                    }
+                }
+
+                item {
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Column(modifier = Modifier.padding(16.dp)) {
                             Text("Export Collection", style = MaterialTheme.typography.titleMedium)
                             Text(
                                 "Backup your entire library to a CSV file.",
@@ -217,6 +247,82 @@ fun ImportScreen(
             }
         }
     }
+}
+
+@Composable
+fun StatusMappingDialog(
+    uniqueStatuses: List<String>,
+    onConfirm: (Map<String, CompletionStatus>) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val mapping = remember { mutableStateMapOf<String, CompletionStatus>() }
+    
+    // Default mapping
+    LaunchedEffect(uniqueStatuses) {
+        uniqueStatuses.forEach { status ->
+            val mapped = when {
+                status.contains("Complete", ignoreCase = true) -> CompletionStatus.COMPLETED
+                status.contains("Playing", ignoreCase = true) -> CompletionStatus.PLAYING
+                status.contains("Hold", ignoreCase = true) -> CompletionStatus.ON_HOLD
+                status.contains("Abandoned", ignoreCase = true) -> CompletionStatus.ABANDONED
+                status.contains("Interest", ignoreCase = true) -> CompletionStatus.ABANDONED
+                else -> CompletionStatus.BACKLOG
+            }
+            mapping[status] = mapped
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Map Playnite Statuses") },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth().heightIn(max = 400.dp)) {
+                Text(
+                    "We found these statuses in your Playnite file. Map them to your collection's categories:",
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(bottom = 16.dp)
+                )
+                LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(uniqueStatuses) { status ->
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(status, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                            
+                            var expanded by remember { mutableStateOf(false) }
+                            Box {
+                                TextButton(onClick = { expanded = true }) {
+                                    Text(mapping[status]?.name ?: "Select...")
+                                }
+                                DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                                    CompletionStatus.entries.forEach { completionStatus ->
+                                        DropdownMenuItem(
+                                            text = { Text(completionStatus.name) },
+                                            onClick = {
+                                                mapping[status] = completionStatus
+                                                expanded = false
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = { onConfirm(mapping.toMap()) }) {
+                Text("Start Import")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
 }
 
 @Composable

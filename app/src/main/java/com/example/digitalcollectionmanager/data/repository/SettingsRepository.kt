@@ -19,7 +19,7 @@ class SettingsRepository(private val context: Context) {
         val LAST_GOG_USERNAME = stringPreferencesKey("last_gog_username")
         val COLUMN_COUNT = androidx.datastore.preferences.core.intPreferencesKey("column_count")
         val SORT_ORDER = stringPreferencesKey("sort_order")
-        val GROUPING_TYPE = stringPreferencesKey("grouping_type") // "NONE", "STATUS", "LABEL"
+        val GROUPING_TYPE = stringPreferencesKey("grouping_type") // "NONE", "STATUS", "LABEL", "PLATFORM", "GENRE"
     }
 
     val columnCount: Flow<Int> = context.dataStore.data.map { preferences ->
@@ -28,7 +28,7 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun updateColumnCount(count: Int) {
         context.dataStore.edit { preferences ->
-            preferences[PreferencesKeys.COLUMN_COUNT] = count.coerceIn(1, 8) // Keep it between 1 and 8
+            preferences[PreferencesKeys.COLUMN_COUNT] = count.coerceIn(1, 10) // Keep it between 1 and 10
         }
     }
 

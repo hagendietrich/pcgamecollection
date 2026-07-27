@@ -11,7 +11,10 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.*
@@ -38,6 +41,7 @@ import com.example.digitalcollectionmanager.data.model.SortOrder
 import com.example.digitalcollectionmanager.ui.components.AppTopBar
 import com.example.digitalcollectionmanager.ui.theme.DigitalCollectionManagerTheme
 import com.example.digitalcollectionmanager.ui.viewmodel.GameListViewModel
+import kotlinx.coroutines.flow.first
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -46,6 +50,7 @@ fun GameListScreen(
     onNavigate: (String) -> Unit,
     onAddGame: () -> Unit
 ) {
+    val allGames by viewModel.allGames.collectAsState()
     val groupedGames by viewModel.groupedGames.collectAsState()
     val columnCount by viewModel.columnCount.collectAsState()
     val selectedGameIds by viewModel.selectedGameIds.collectAsState()
@@ -54,6 +59,17 @@ fun GameListScreen(
     val searchQuery by viewModel.searchQuery.collectAsState()
     
     var selectedGame by remember { mutableStateOf<Game?>(null) }
+    
+    // Keep selectedGame in sync with the latest data from the repository
+    LaunchedEffect(allGames) {
+        selectedGame?.let { current ->
+            val updated = allGames.find { it.id == current.id }
+            if (updated != null) {
+                selectedGame = updated
+            }
+        }
+    }
+
     val sheetState = rememberModalBottomSheetState()
     var showBottomSheet by remember { mutableStateOf(false) }
     var showSortMenu by remember { mutableStateOf(false) }
@@ -70,7 +86,9 @@ fun GameListScreen(
                     selectedCount = selectedGameIds.size,
                     onClose = { viewModel.clearSelection() },
                     onUpdateStatus = { viewModel.updateSelectedStatus(it) },
-                    onAddLabel = { viewModel.addLabelToSelected(it) }
+                    onAddLabel = { viewModel.addLabelToSelected(it) },
+                    onRemoveLabel = { viewModel.removeLabelFromSelected(it) },
+                    viewModel = viewModel
                 )
             } else {
                 AppTopBar(
@@ -115,6 +133,13 @@ fun GameListScreen(
                                     text = { Text("Group by Platform") },
                                     onClick = {
                                         viewModel.setGroupingType(GroupingType.PLATFORM); showGroupingMenu =
+                                        false
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Group by Genre") },
+                                    onClick = {
+                                        viewModel.setGroupingType(GroupingType.GENRE); showGroupingMenu =
                                         false
                                     }
                                 )
@@ -177,16 +202,16 @@ fun GameListScreen(
                                 )
                             )
                         }) {
-                            Text("-", style = MaterialTheme.typography.headlineMedium)
+                            Icon(Icons.Default.ZoomIn, contentDescription = "Bigger Covers")
                         }
                         IconButton(onClick = {
                             viewModel.setColumnCount(
                                 (columnCount + 1).coerceAtMost(
-                                    8
+                                    10
                                 )
                             )
                         }) {
-                            Text("+", style = MaterialTheme.typography.headlineMedium)
+                            Icon(Icons.Default.ZoomOut, contentDescription = "Smaller Covers")
                         }
                     }
                 )
@@ -300,6 +325,7 @@ fun GameListScreen(
         ) {
             GameDetailContent(
                 game = selectedGame!!,
+                viewModel = viewModel,
                 onUpdate = { updatedGame ->
                     viewModel.updateGame(updatedGame)
                     selectedGame = updatedGame
@@ -393,10 +419,12 @@ fun MultiSelectTopBar(
     selectedCount: Int,
     onClose: () -> Unit,
     onUpdateStatus: (CompletionStatus) -> Unit,
-    onAddLabel: (String) -> Unit
+    onAddLabel: (String) -> Unit,
+    onRemoveLabel: (String) -> Unit,
+    viewModel: GameListViewModel
 ) {
     var showStatusMenu by remember { mutableStateOf(false) }
-    var showLabelDialog by remember { mutableStateOf(false) }
+    var showLabelManager by remember { mutableStateOf(false) }
 
     TopAppBar(
         title = { Text("$selectedCount Selected") },
@@ -419,51 +447,103 @@ fun MultiSelectTopBar(
                     }
                 }
             }
-            TextButton(onClick = { showLabelDialog = true }) {
-                Text("Label")
+            TextButton(onClick = { showLabelManager = true }) {
+                Text("Labels")
             }
         }
     )
 
-    if (showLabelDialog) {
-        var labelText by remember { mutableStateOf("") }
-        AlertDialog(
-            onDismissRequest = { showLabelDialog = false },
-            title = { Text("Add Label") },
-            text = {
-                OutlinedTextField(
-                    value = labelText,
-                    onValueChange = { labelText = it },
-                    label = { Text("Label Name") },
-                    singleLine = true
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = { onAddLabel(labelText); showLabelDialog = false }) {
-                    Text("Add")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showLabelDialog = false }) {
-                    Text("Cancel")
-                }
-            }
+    if (showLabelManager) {
+        BulkLabelManagerDialog(
+            viewModel = viewModel,
+            onAdd = onAddLabel,
+            onRemove = onRemoveLabel,
+            onDismiss = { showLabelManager = false }
         )
     }
 }
 
 @Composable
+fun BulkLabelManagerDialog(
+    viewModel: GameListViewModel,
+    onAdd: (String) -> Unit,
+    onRemove: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val selectedIds by viewModel.selectedGameIds.collectAsState()
+    var newLabelText by remember { mutableStateOf("") }
+
+    // Find labels present in ANY of the selected games
+    val groupedGames by viewModel.groupedGames.collectAsState()
+    val commonLabels = remember(selectedIds, groupedGames) {
+        groupedGames.values.flatten().filter { it.id in selectedIds }.flatMap { it.labels }.toSet()
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Manage Labels") },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth().heightIn(max = 400.dp)) {
+                OutlinedTextField(
+                    value = newLabelText,
+                    onValueChange = { newLabelText = it },
+                    label = { Text("Add New Label") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    trailingIcon = {
+                        IconButton(onClick = { 
+                            onAdd(newLabelText)
+                            newLabelText = ""
+                        }) {
+                            Icon(Icons.Default.Add, contentDescription = "Add")
+                        }
+                    }
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+                Text("Existing Labels in Selection:", style = MaterialTheme.typography.labelMedium)
+                
+                if (commonLabels.isEmpty()) {
+                    Text("No labels found in selected games.", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp))
+                } else {
+                    LazyColumn(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                        items(commonLabels.toList()) { label ->
+                            ListItem(
+                                headlineContent = { Text(label) },
+                                trailingContent = {
+                                    IconButton(onClick = { onRemove(label) }) {
+                                        Icon(Icons.Default.Delete, contentDescription = "Remove", tint = MaterialTheme.colorScheme.error)
+                                    }
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Done") }
+        }
+    )
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
 fun GameDetailContent(
     game: Game,
+    viewModel: GameListViewModel,
     onUpdate: (Game) -> Unit,
     onDelete: () -> Unit,
     onReMatchClick: () -> Unit
 ) {
     var showPlaytimePicker by remember { mutableStateOf(false) }
+    var showAddLabelDialog by remember { mutableStateOf(false) }
+    var showAddGenreDialog by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            .verticalScroll(rememberScrollState())
             .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
@@ -539,20 +619,70 @@ fun GameDetailContent(
             }
         }
 
-        if (game.genres.isNotEmpty()) {
-            Text(
-                text = stringResource(R.string.detail_genres, game.genres.joinToString(", ")),
-                style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.padding(top = 8.dp)
-            )
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Genres
+        Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Genres:", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.width(8.dp))
+                Surface(
+                    shape = MaterialTheme.shapes.small,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                    modifier = Modifier.clickable { showAddGenreDialog = true }
+                ) {
+                    Text(
+                        text = " + Add ",
+                        style = MaterialTheme.typography.labelMedium,
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                    )
+                }
+            }
+            FlowRow(
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                horizontalArrangement = Arrangement.Center,
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                game.genres.forEach { genre ->
+                    ManageableChip(
+                        text = genre,
+                        onDelete = { viewModel.removeGenreFromGame(game.id, genre) }
+                    )
+                }
+            }
         }
-        
-        if (game.labels.isNotEmpty()) {
-            Text(
-                text = "Labels: ${game.labels.joinToString(", ")}",
-                style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.padding(top = 4.dp)
-            )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Labels
+        Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Labels:", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.width(8.dp))
+                Surface(
+                    shape = MaterialTheme.shapes.small,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                    modifier = Modifier.clickable { showAddLabelDialog = true }
+                ) {
+                    Text(
+                        text = " + Add ",
+                        style = MaterialTheme.typography.labelMedium,
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                    )
+                }
+            }
+            FlowRow(
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                horizontalArrangement = Arrangement.Center,
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                game.labels.forEach { label ->
+                    ManageableChip(
+                        text = label,
+                        onDelete = { viewModel.removeLabelFromGame(game.id, label) }
+                    )
+                }
+            }
         }
 
         Spacer(modifier = Modifier.height(32.dp))
@@ -584,6 +714,121 @@ fun GameDetailContent(
             }
         )
     }
+
+    if (showAddLabelDialog) {
+        val allLabels by viewModel.allLabels.collectAsState()
+        AddTagDialog(
+            title = "Add Label",
+            suggestions = allLabels,
+            onConfirm = { viewModel.addLabelToGame(game.id, it); showAddLabelDialog = false },
+            onDismiss = { showAddLabelDialog = false }
+        )
+    }
+
+    if (showAddGenreDialog) {
+        val allGenres by viewModel.allGenres.collectAsState()
+        AddTagDialog(
+            title = "Add Genre",
+            suggestions = allGenres,
+            onConfirm = { viewModel.addGenreToGame(game.id, it); showAddGenreDialog = false },
+            onDismiss = { showAddGenreDialog = false }
+        )
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun ManageableChip(
+    text: String,
+    onDelete: () -> Unit
+) {
+    var showDeleteConfirm by remember { mutableStateOf(false) }
+
+    Surface(
+        modifier = Modifier
+            .combinedClickable(
+                onClick = {},
+                onLongClick = { showDeleteConfirm = true }
+            ),
+        shape = MaterialTheme.shapes.small,
+        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+    ) {
+        Text(
+            text = text,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+            style = MaterialTheme.typography.labelMedium
+        )
+    }
+
+    if (showDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false },
+            title = { Text("Remove \"$text\"?") },
+            confirmButton = {
+                TextButton(onClick = { onDelete(); showDeleteConfirm = false }) {
+                    Text("Remove", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirm = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+}
+
+@Composable
+fun AddTagDialog(
+    title: String,
+    suggestions: List<String>,
+    onConfirm: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var text by remember { mutableStateOf("") }
+    
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = { text = it },
+                    label = { Text("Name") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                
+                if (suggestions.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text("Existing:", style = MaterialTheme.typography.labelSmall)
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth().heightIn(max = 150.dp).verticalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        suggestions.forEach { suggestion ->
+                            AssistChip(
+                                onClick = { text = suggestion },
+                                label = { Text(suggestion) }
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(text) }) {
+                Text("Add")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
 }
 
 @Composable

@@ -5,6 +5,8 @@ import androidx.lifecycle.viewModelScope
 import android.content.ContentResolver
 import android.net.Uri
 import com.example.digitalcollectionmanager.data.api.models.IgdbGame
+import com.example.digitalcollectionmanager.data.api.models.PlayniteGame
+import com.example.digitalcollectionmanager.data.model.CompletionStatus
 import com.example.digitalcollectionmanager.data.repository.GameRepository
 import com.example.digitalcollectionmanager.data.repository.SettingsRepository
 import com.example.digitalcollectionmanager.data.repository.UnmatchedGame
@@ -13,6 +15,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.Json
 
 class ImportViewModel(
     private val gameRepository: GameRepository,
@@ -27,6 +30,11 @@ class ImportViewModel(
 
     private val _lastGogUsername = MutableStateFlow("")
     val lastGogUsername: StateFlow<String> = _lastGogUsername.asStateFlow()
+
+    private val _playniteImportState = MutableStateFlow<PlayniteImportState>(PlayniteImportState.Idle)
+    val playniteImportState: StateFlow<PlayniteImportState> = _playniteImportState.asStateFlow()
+
+    private var tempPlayniteGames: List<PlayniteGame> = emptyList()
 
     init {
         viewModelScope.launch {
@@ -89,6 +97,52 @@ class ImportViewModel(
         }
     }
 
+    fun parsePlayniteJson(uri: Uri, contentResolver: ContentResolver) {
+        viewModelScope.launch {
+            _uiState.value = ImportUiState.Loading(0.2f, "Parsing Playnite JSON...")
+            try {
+                val jsonString = contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } ?: ""
+                val json = Json { ignoreUnknownKeys = true; coerceInputValues = true }
+                val games: List<PlayniteGame> = json.decodeFromString(jsonString)
+                
+                tempPlayniteGames = games
+                val statuses = games.mapNotNull { it.completionStatus?.name }.distinct().sorted()
+                
+                _playniteImportState.value = PlayniteImportState.MappingRequired(statuses)
+                _uiState.value = ImportUiState.Idle
+            } catch (e: Exception) {
+                _uiState.value = ImportUiState.Error("Failed to parse Playnite JSON: ${e.message}")
+            }
+        }
+    }
+
+    fun startPlayniteImport(mapping: Map<String, CompletionStatus>) {
+        if (tempPlayniteGames.isEmpty()) return
+        viewModelScope.launch {
+            _playniteImportState.value = PlayniteImportState.Idle
+            _uiState.value = ImportUiState.Loading(0f, "Starting Playnite import...")
+            try {
+                val result = gameRepository.syncPlayniteGames(tempPlayniteGames, mapping) { progress, message ->
+                    _uiState.value = ImportUiState.Loading(progress, message)
+                }
+                
+                val msg = if (result.importedCount > 0)
+                    "Successfully imported ${result.importedCount} games from Playnite."
+                else "Playnite library checked. No new games were added."
+                
+                _uiState.value = ImportUiState.Success(msg, result.unmatchedGames)
+                tempPlayniteGames = emptyList()
+            } catch (e: Exception) {
+                _uiState.value = ImportUiState.Error("Playnite import failed: ${e.message}")
+            }
+        }
+    }
+
+    fun cancelPlayniteImport() {
+        tempPlayniteGames = emptyList()
+        _playniteImportState.value = PlayniteImportState.Idle
+    }
+
     fun resolveUnmatchedGame(unmatched: UnmatchedGame, selection: IgdbGame) {
         viewModelScope.launch {
             gameRepository.linkGameManually(unmatched, selection)
@@ -148,4 +202,9 @@ sealed class ImportUiState {
         val unmatchedGames: List<UnmatchedGame> = emptyList()
     ) : ImportUiState()
     data class Error(val message: String) : ImportUiState()
+}
+
+sealed class PlayniteImportState {
+    object Idle : PlayniteImportState()
+    data class MappingRequired(val uniqueStatuses: List<String>) : PlayniteImportState()
 }
