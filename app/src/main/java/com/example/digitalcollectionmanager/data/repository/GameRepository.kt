@@ -456,6 +456,28 @@ class GameRepository(
         gameDao.updateGame(game)
     }
 
+    /**
+     * Updates an existing game with new metadata from IGDB, but preserves source IDs and playtime.
+     */
+    suspend fun reMatchGame(gameId: Int, newIgdbGame: IgdbGame) = withContext(Dispatchers.IO) {
+        val existingGame = gameDao.getGameById(gameId) ?: return@withContext
+        
+        val clientId = settingsRepository.clientId.firstOrNull() ?: return@withContext
+        val fullIgdbGames = igdbClient.getGamesByIds(clientId, listOf(newIgdbGame.id))
+        val igdbGame = fullIgdbGames.firstOrNull() ?: newIgdbGame
+        
+        val updatedGame = existingGame.copy(
+            title = igdbGame.name,
+            coverImageUrl = getFullCoverUrl(igdbGame.cover?.url),
+            releaseDate = formatTimestamp(igdbGame.firstReleaseDate),
+            igdbId = igdbGame.id,
+            genres = igdbGame.genres?.map { it.name } ?: emptyList()
+            // Keep: id, platforms, isOwned, sourceIds, playtimes, playtimeMinutes, labels, completionStatus
+        )
+        
+        gameDao.updateGame(updatedGame)
+    }
+
     suspend fun deleteGame(game: Game) {
         gameDao.deleteGame(game)
     }

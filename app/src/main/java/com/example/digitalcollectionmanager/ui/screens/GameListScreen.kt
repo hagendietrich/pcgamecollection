@@ -5,6 +5,8 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -25,8 +27,10 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import coil.compose.AsyncImage
 import com.example.digitalcollectionmanager.R
+import com.example.digitalcollectionmanager.data.api.models.IgdbGame
 import com.example.digitalcollectionmanager.data.model.CompletionStatus
 import com.example.digitalcollectionmanager.data.model.Game
 import com.example.digitalcollectionmanager.data.model.GroupingType
@@ -46,12 +50,15 @@ fun GameListScreen(
     val columnCount by viewModel.columnCount.collectAsState()
     val selectedGameIds by viewModel.selectedGameIds.collectAsState()
     val isMultiSelectMode by viewModel.isMultiSelectMode.collectAsState()
+    val reMatchResults by viewModel.reMatchResults.collectAsState()
+    val searchQuery by viewModel.searchQuery.collectAsState()
     
     var selectedGame by remember { mutableStateOf<Game?>(null) }
     val sheetState = rememberModalBottomSheetState()
     var showBottomSheet by remember { mutableStateOf(false) }
     var showSortMenu by remember { mutableStateOf(false) }
     var showGroupingMenu by remember { mutableStateOf(false) }
+    var showReMatchDialog by remember { mutableStateOf(false) }
 
     // State to track collapsed groups
     val collapsedGroups = remember { mutableStateMapOf<String, Boolean>() }
@@ -69,6 +76,10 @@ fun GameListScreen(
                 AppTopBar(
                     title = stringResource(R.string.library_title),
                     onNavigate = onNavigate,
+                    isSearchActive = true,
+                    searchQuery = searchQuery,
+                    onSearchQueryChange = { viewModel.updateSearchQuery(it) },
+                    showSearchToggle = false,
                     actions = {
                         // Grouping Button
                         Box(modifier = Modifier.wrapContentSize(Alignment.TopEnd)) {
@@ -81,19 +92,31 @@ fun GameListScreen(
                             ) {
                                 DropdownMenuItem(
                                     text = { Text("No Grouping") },
-                                    onClick = { viewModel.setGroupingType(GroupingType.NONE); showGroupingMenu = false }
+                                    onClick = {
+                                        viewModel.setGroupingType(GroupingType.NONE); showGroupingMenu =
+                                        false
+                                    }
                                 )
                                 DropdownMenuItem(
                                     text = { Text("Group by Status") },
-                                    onClick = { viewModel.setGroupingType(GroupingType.STATUS); showGroupingMenu = false }
+                                    onClick = {
+                                        viewModel.setGroupingType(GroupingType.STATUS); showGroupingMenu =
+                                        false
+                                    }
                                 )
                                 DropdownMenuItem(
                                     text = { Text("Group by Label") },
-                                    onClick = { viewModel.setGroupingType(GroupingType.LABEL); showGroupingMenu = false }
+                                    onClick = {
+                                        viewModel.setGroupingType(GroupingType.LABEL); showGroupingMenu =
+                                        false
+                                    }
                                 )
                                 DropdownMenuItem(
                                     text = { Text("Group by Platform") },
-                                    onClick = { viewModel.setGroupingType(GroupingType.PLATFORM); showGroupingMenu = false }
+                                    onClick = {
+                                        viewModel.setGroupingType(GroupingType.PLATFORM); showGroupingMenu =
+                                        false
+                                    }
                                 )
                             }
                         }
@@ -112,30 +135,57 @@ fun GameListScreen(
                             ) {
                                 DropdownMenuItem(
                                     text = { Text(stringResource(R.string.sort_by_title)) },
-                                    onClick = { viewModel.setSortOrder(SortOrder.TITLE_ASC); showSortMenu = false }
+                                    onClick = {
+                                        viewModel.setSortOrder(SortOrder.TITLE_ASC); showSortMenu =
+                                        false
+                                    }
                                 )
                                 DropdownMenuItem(
                                     text = { Text(stringResource(R.string.sort_by_date_desc)) },
-                                    onClick = { viewModel.setSortOrder(SortOrder.RELEASE_DATE_DESC); showSortMenu = false }
+                                    onClick = {
+                                        viewModel.setSortOrder(SortOrder.RELEASE_DATE_DESC); showSortMenu =
+                                        false
+                                    }
                                 )
                                 DropdownMenuItem(
                                     text = { Text(stringResource(R.string.sort_by_date_asc)) },
-                                    onClick = { viewModel.setSortOrder(SortOrder.RELEASE_DATE_ASC); showSortMenu = false }
+                                    onClick = {
+                                        viewModel.setSortOrder(SortOrder.RELEASE_DATE_ASC); showSortMenu =
+                                        false
+                                    }
                                 )
                                 DropdownMenuItem(
                                     text = { Text(stringResource(R.string.sort_by_playtime_desc)) },
-                                    onClick = { viewModel.setSortOrder(SortOrder.PLAYTIME_DESC); showSortMenu = false }
+                                    onClick = {
+                                        viewModel.setSortOrder(SortOrder.PLAYTIME_DESC); showSortMenu =
+                                        false
+                                    }
                                 )
                                 DropdownMenuItem(
                                     text = { Text(stringResource(R.string.sort_by_playtime_asc)) },
-                                    onClick = { viewModel.setSortOrder(SortOrder.PLAYTIME_ASC); showSortMenu = false }
+                                    onClick = {
+                                        viewModel.setSortOrder(SortOrder.PLAYTIME_ASC); showSortMenu =
+                                        false
+                                    }
                                 )
                             }
                         }
-                        IconButton(onClick = { viewModel.setColumnCount((columnCount - 1).coerceAtLeast(2)) }) {
+                        IconButton(onClick = {
+                            viewModel.setColumnCount(
+                                (columnCount - 1).coerceAtLeast(
+                                    1
+                                )
+                            )
+                        }) {
                             Text("-", style = MaterialTheme.typography.headlineMedium)
                         }
-                        IconButton(onClick = { viewModel.setColumnCount((columnCount + 1).coerceAtMost(5)) }) {
+                        IconButton(onClick = {
+                            viewModel.setColumnCount(
+                                (columnCount + 1).coerceAtMost(
+                                    8
+                                )
+                            )
+                        }) {
                             Text("+", style = MaterialTheme.typography.headlineMedium)
                         }
                     }
@@ -257,9 +307,30 @@ fun GameListScreen(
                 onDelete = {
                     viewModel.deleteGame(selectedGame!!)
                     showBottomSheet = false
+                },
+                onReMatchClick = {
+                    viewModel.searchForReMatch(selectedGame!!.title)
+                    showReMatchDialog = true
                 }
             )
         }
+    }
+
+    if (showReMatchDialog && selectedGame != null) {
+        ReMatchDialog(
+            initialTitle = selectedGame!!.title,
+            candidates = reMatchResults,
+            onSearch = { viewModel.searchForReMatch(it) },
+            onSelect = { candidate ->
+                viewModel.applyReMatch(selectedGame!!.id, candidate)
+                showReMatchDialog = false
+                showBottomSheet = false // Close detail sheet too
+            },
+            onDismiss = {
+                viewModel.clearReMatchResults()
+                showReMatchDialog = false
+            }
+        )
     }
 }
 
@@ -385,7 +456,8 @@ fun MultiSelectTopBar(
 fun GameDetailContent(
     game: Game,
     onUpdate: (Game) -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onReMatchClick: () -> Unit
 ) {
     var showPlaytimePicker by remember { mutableStateOf(false) }
 
@@ -395,6 +467,24 @@ fun GameDetailContent(
             .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
+        Box(modifier = Modifier.fillMaxWidth()) {
+            Text(
+                text = game.title,
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.align(Alignment.Center).padding(horizontal = 48.dp),
+                textAlign = TextAlign.Center
+            )
+            IconButton(
+                onClick = onReMatchClick,
+                modifier = Modifier.align(Alignment.TopEnd)
+            ) {
+                Icon(Icons.Default.Refresh, contentDescription = "Re-match IGDB Metadata")
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+        
         AsyncImage(
             model = game.coverImageUrl,
             contentDescription = null,
@@ -404,11 +494,6 @@ fun GameDetailContent(
             contentScale = ContentScale.Crop
         )
         Spacer(modifier = Modifier.height(16.dp))
-        Text(
-            text = game.title,
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Bold
-        )
         Text(
             text = stringResource(R.string.detail_platform, game.platforms.joinToString(", ")),
             style = MaterialTheme.typography.bodyMedium
@@ -563,6 +648,73 @@ fun PlaytimePickerDialog(
                 Text("Confirm")
             }
         },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
+}
+
+@Composable
+fun ReMatchDialog(
+    initialTitle: String,
+    candidates: List<IgdbGame>,
+    onSearch: (String) -> Unit,
+    onSelect: (IgdbGame) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var searchText by remember { mutableStateOf(initialTitle) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Re-match IGDB Metadata") },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth().heightIn(max = 500.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedTextField(
+                        value = searchText,
+                        onValueChange = { searchText = it },
+                        label = { Text("Search Title") },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true
+                    )
+                    IconButton(onClick = { onSearch(searchText) }) {
+                        Icon(Icons.Default.Search, contentDescription = "Search")
+                    }
+                }
+                
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                if (candidates.isEmpty()) {
+                    Text("No results. Try refining your search.", style = MaterialTheme.typography.bodySmall)
+                } else {
+                    LazyColumn(modifier = Modifier.weight(1f)) {
+                        items(candidates) { candidate ->
+                            val year = candidate.firstReleaseDate?.let { 
+                                java.time.Instant.ofEpochSecond(it).atZone(java.time.ZoneId.systemDefault()).year 
+                            }
+                            
+                            ListItem(
+                                headlineContent = { Text(candidate.name) },
+                                supportingContent = { Text(year?.toString() ?: "Unknown Year") },
+                                leadingContent = {
+                                    AsyncImage(
+                                        model = candidate.cover?.url?.let { "https:" + it.replace("t_thumb", "t_cover_small") },
+                                        contentDescription = null,
+                                        modifier = Modifier.size(40.dp),
+                                        contentScale = ContentScale.Crop
+                                    )
+                                },
+                                modifier = Modifier.clickable { onSelect(candidate) }
+                            )
+                            HorizontalDivider()
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {},
         dismissButton = {
             TextButton(onClick = onDismiss) {
                 Text("Cancel")

@@ -71,7 +71,8 @@ fun AddGameContent(
         topBar = {
             AppTopBar(
                 title = stringResource(R.string.add_game_title),
-                onNavigate = onNavigate
+                onNavigate = onNavigate,
+                showSearchToggle = false
             )
         }
     ) { innerPadding ->

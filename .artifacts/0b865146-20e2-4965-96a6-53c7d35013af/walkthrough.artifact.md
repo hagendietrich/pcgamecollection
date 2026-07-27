@@ -1,18 +1,24 @@
-# Walkthrough - Custom Search for Manual Matching
+# Walkthrough - Permanent Search Bar in Library
 
-I have implemented a **Custom Search** feature within the manual matching step. This allows you to refine or completely change the search query if the automatic matching doesn't find the correct game on IGDB.
+I have replaced the static "My Collection" title in the library screen with a permanent, always-visible search bar. This change streamlines the experience by allowing you to filter your collection instantly without needing to toggle a search mode.
 
 ## Changes Made
 
-### 1. Refined Resolution UI
-- **[MODIFY] [ImportScreen.kt](file:///var/home/hagen/Coding/AndroidStudio/DigitalCollectionManager/app/src/main/java/com/example/digitalcollectionmanager/ui/screens/ImportScreen.kt):**
-    - Added an editable text field to the expanded **"Resolve"** section for each unmatched game.
-    - Added a **"Search"** button that triggers a new search on IGDB using your custom text.
-    - The search text defaults to the title found in your Steam/GOG library.
+### 1. Enhanced Top Bar
+- **[MODIFY] [AppTopBar.kt](file:///var/home/hagen/Coding/AndroidStudio/DigitalCollectionManager/app/src/main/java/com/example/digitalcollectionmanager/ui/components/AppTopBar.kt):**
+    - Updated the `AppTopBar` to allow the search field to be always active.
+    - Added a `showSearchToggle` parameter to hide the search icon on screens where it's not applicable (like Settings or Import).
+    - Simplified the placeholder to "Search collection...".
 
-### 2. ViewModel Search Logic
-- **[MODIFY] [ImportViewModel.kt](file:///var/home/hagen/Coding/AndroidStudio/DigitalCollectionManager/app/src/main/java/com/example/digitalcollectionmanager/ui/viewmodel/ImportViewModel.kt):**
-    - Added `searchCustomCandidates()` to handle the logic of fetching new candidates from IGDB and updating the UI state in real-time.
+### 2. Seamless Library Integration
+- **[MODIFY] [GameListScreen.kt](file:///var/home/hagen/Coding/AndroidStudio/DigitalCollectionManager/app/src/main/java/com/example/digitalcollectionmanager/ui/screens/GameListScreen.kt):**
+    - Removed the manual `isSearchMode` toggle logic.
+    - Configured the top bar to always show the search field while in the library.
+    - Simplified the actions area by removing redundant search/close icons.
+
+### 3. Consistency Improvements
+- **[MODIFY] [ImportScreen.kt](file:///var/home/hagen/Coding/AndroidStudio/DigitalCollectionManager/app/src/main/java/com/example/digitalcollectionmanager/ui/screens/ImportScreen.kt), [AddGameScreen.kt](file:///var/home/hagen/Coding/AndroidStudio/DigitalCollectionManager/app/src/main/java/com/example/digitalcollectionmanager/ui/screens/AddGameScreen.kt), [SetupScreen.kt](file:///var/home/hagen/Coding/AndroidStudio/DigitalCollectionManager/app/src/main/java/com/example/digitalcollectionmanager/ui/screens/SetupScreen.kt):**
+    - Disabled the search toggle on all non-library screens to maintain a clean and functional interface.
 
 ## Verification Results
 
@@ -20,9 +26,8 @@ I have implemented a **Custom Search** feature within the manual matching step. 
 - **Build Success:** `gradle_build(app:assembleDebug)` passed successfully.
 
 ### Manual Verification Recommended
-1.  **Sync Library:** Run a sync that results in unmatched games.
-2.  **Open Resolve:** Tap **Resolve** on an unmatched title.
-3.  **Refine Search:**
-    - If no matches appear (e.g., for a title like "Gothic 1 Classic"), edit the text to just "Gothic".
-    - Tap **Search**.
-4.  **Confirm Results:** Verify that the list updates with fresh results for "Gothic". You can then select the correct one to complete the import.
+1.  Open the **My Collection** screen.
+2.  Verify that the search bar is immediately visible at the top.
+3.  Type a game title (e.g., "Witcher").
+4.  Observe that the collection filters in real-time as you type.
+5.  Navigate to **Import/Export** or **Settings** and verify that those screens still show their correct titles and no search bar.

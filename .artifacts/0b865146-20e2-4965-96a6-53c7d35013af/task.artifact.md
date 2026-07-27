@@ -1,8 +1,9 @@
-- [x] **ViewModel Enhancement**
-    - [x] Add `searchCustomCandidates()` to `ImportViewModel.kt`
-- [x] **UI Implementation**
-    - [x] Update `UnmatchedGameRow` with editable search field
-    - [x] Add "Search" button and loading state to row
+- [x] **AppTopBar Update**
+    - [x] Support always-on search mode
+    - [x] Clean up redundant icons
+- [x] **GameListScreen Update**
+    - [x] Remove `isSearchMode` state
+    - [x] Connect permanent search to ViewModel
 - [x] **Verification**
     - [x] Verify build
-    - [ ] Manual test: refine search for an unmatched title
+    - [x] Manual test: immediate search access in library

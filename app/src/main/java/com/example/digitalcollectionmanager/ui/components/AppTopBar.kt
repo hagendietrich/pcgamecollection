@@ -1,14 +1,19 @@
 package com.example.digitalcollectionmanager.ui.components
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import com.example.digitalcollectionmanager.R
 import com.example.digitalcollectionmanager.ui.navigation.Screen
@@ -18,13 +23,52 @@ import com.example.digitalcollectionmanager.ui.navigation.Screen
 fun AppTopBar(
     title: String,
     onNavigate: (String) -> Unit,
+    isSearchActive: Boolean = false,
+    searchQuery: String = "",
+    onSearchQueryChange: (String) -> Unit = {},
+    showSearchToggle: Boolean = true,
+    onToggleSearch: (Boolean) -> Unit = {},
     actions: @Composable RowScope.() -> Unit = {}
 ) {
     var showMenu by remember { mutableStateOf(false) }
 
     TopAppBar(
-        title = { Text(title) },
+        title = {
+            if (isSearchActive) {
+                TextField(
+                    value = searchQuery,
+                    onValueChange = onSearchQueryChange,
+                    placeholder = { Text("Search...") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    colors = TextFieldDefaults.colors(
+                        focusedContainerColor = Color.Transparent,
+                        unfocusedContainerColor = Color.Transparent,
+                        disabledContainerColor = Color.Transparent,
+                        focusedIndicatorColor = Color.Transparent,
+                        unfocusedIndicatorColor = Color.Transparent,
+                    ),
+                    trailingIcon = {
+                        if (searchQuery.isNotEmpty()) {
+                            IconButton(onClick = { onSearchQueryChange("") }) {
+                                Icon(Icons.Default.Close, contentDescription = "Clear")
+                            }
+                        }
+                    }
+                )
+            } else {
+                Text(
+                    text = title,
+                    modifier = Modifier.clickable(enabled = showSearchToggle) { onToggleSearch(true) }
+                )
+            }
+        },
         actions = {
+            if (!isSearchActive && showSearchToggle) {
+                IconButton(onClick = { onToggleSearch(true) }) {
+                    Icon(Icons.Default.Search, contentDescription = "Search")
+                }
+            }
             actions()
             Box(modifier = Modifier.wrapContentSize(Alignment.TopEnd)) {
                 IconButton(onClick = { showMenu = true }) {

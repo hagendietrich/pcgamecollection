@@ -6,6 +6,7 @@ import com.example.digitalcollectionmanager.data.model.CompletionStatus
 import com.example.digitalcollectionmanager.data.model.Game
 import com.example.digitalcollectionmanager.data.model.GroupingType
 import com.example.digitalcollectionmanager.data.model.SortOrder
+import com.example.digitalcollectionmanager.data.api.models.IgdbGame
 import com.example.digitalcollectionmanager.data.repository.GameRepository
 import com.example.digitalcollectionmanager.data.repository.SettingsRepository
 import kotlinx.coroutines.flow.*
@@ -19,6 +20,9 @@ class GameListViewModel(
     private val _selectedGameIds = MutableStateFlow<Set<Int>>(emptySet())
     val selectedGameIds: StateFlow<Set<Int>> = _selectedGameIds.asStateFlow()
 
+    private val _searchQuery = MutableStateFlow("")
+    val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
+
     val isMultiSelectMode: StateFlow<Boolean> = _selectedGameIds.map { it.isNotEmpty() }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
@@ -28,14 +32,21 @@ class GameListViewModel(
     val groupedGames: StateFlow<Map<String, List<Game>>> = combine(
         gameRepository.getAllGames(),
         settingsRepository.sortOrder,
-        settingsRepository.groupingType
-    ) { games, sortOrder, groupingType ->
+        settingsRepository.groupingType,
+        _searchQuery
+    ) { games, sortOrder, groupingType, query ->
+        val filtered = if (query.isBlank()) {
+            games
+        } else {
+            games.filter { it.title.contains(query, ignoreCase = true) }
+        }
+
         val sorted = when (sortOrder) {
-            SortOrder.TITLE_ASC -> games.sortedBy { it.title.lowercase() }
-            SortOrder.RELEASE_DATE_ASC -> games.sortedBy { it.releaseDate }
-            SortOrder.RELEASE_DATE_DESC -> games.sortedByDescending { it.releaseDate }
-            SortOrder.PLAYTIME_ASC -> games.sortedBy { it.playtimeMinutes }
-            SortOrder.PLAYTIME_DESC -> games.sortedByDescending { it.playtimeMinutes }
+            SortOrder.TITLE_ASC -> filtered.sortedBy { it.title.lowercase() }
+            SortOrder.RELEASE_DATE_ASC -> filtered.sortedBy { it.releaseDate }
+            SortOrder.RELEASE_DATE_DESC -> filtered.sortedByDescending { it.releaseDate }
+            SortOrder.PLAYTIME_ASC -> filtered.sortedBy { it.playtimeMinutes }
+            SortOrder.PLAYTIME_DESC -> filtered.sortedByDescending { it.playtimeMinutes }
         }
 
         when (groupingType) {
@@ -78,6 +89,31 @@ class GameListViewModel(
 
     val sortOrder: StateFlow<SortOrder> = settingsRepository.sortOrder
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), SortOrder.TITLE_ASC)
+
+    private val _reMatchResults = MutableStateFlow<List<IgdbGame>>(emptyList())
+    val reMatchResults: StateFlow<List<IgdbGame>> = _reMatchResults.asStateFlow()
+
+    fun searchForReMatch(query: String) {
+        if (query.isBlank()) return
+        viewModelScope.launch {
+            _reMatchResults.value = gameRepository.searchGames(query)
+        }
+    }
+
+    fun applyReMatch(gameId: Int, selection: IgdbGame) {
+        viewModelScope.launch {
+            gameRepository.reMatchGame(gameId, selection)
+            _reMatchResults.value = emptyList()
+        }
+    }
+
+    fun clearReMatchResults() {
+        _reMatchResults.value = emptyList()
+    }
+
+    fun updateSearchQuery(query: String) {
+        _searchQuery.value = query
+    }
 
     fun setColumnCount(count: Int) {
         viewModelScope.launch {

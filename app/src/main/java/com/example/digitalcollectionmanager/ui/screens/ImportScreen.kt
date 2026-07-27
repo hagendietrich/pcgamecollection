@@ -45,7 +45,8 @@ fun ImportScreen(
         topBar = {
             AppTopBar(
                 title = stringResource(R.string.import_export_title),
-                onNavigate = onNavigate
+                onNavigate = onNavigate,
+                showSearchToggle = false
             )
         }
     ) { innerPadding ->

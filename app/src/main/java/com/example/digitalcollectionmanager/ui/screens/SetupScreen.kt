@@ -41,7 +41,8 @@ fun SetupScreen(
             if (isSettingsMode) {
                 AppTopBar(
                     title = stringResource(R.string.setup_update),
-                    onNavigate = onNavigate
+                    onNavigate = onNavigate,
+                    showSearchToggle = false
                 )
             }
         }
