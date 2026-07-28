@@ -22,6 +22,8 @@
     <string name="detail_platform">Plattform: %1$s</string>
     <string name="detail_released">Veröffentlicht: %1$s</string>
     <string name="detail_genres">Genres: %1$s</string>
+    <string name="rating_users">Nutzer:</string>
+    <string name="rating_critics">Kritiker:</string>
     <string name="setup_welcome">Willkommen zum Manager deiner Spielesammlung</string>
     <string name="setup_update">Zugangsdaten aktualisieren</string>
     <string name="setup_instruction">Um nach Spielen zu suchen, musst du deine IGDB-API-Zugangsdaten angeben (vom Twitch Developer Portal).</string>

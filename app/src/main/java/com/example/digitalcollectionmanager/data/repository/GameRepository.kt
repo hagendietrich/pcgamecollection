@@ -171,13 +171,22 @@ class GameRepository(
                 
                 val updatedSourceIds = existingGame.sourceIds.toMutableMap()
                 updatedSourceIds["STEAM"] = steamAppId
+
+                // Try to find IGDB metadata if it was missing to get the store URL
+                val igdbGame = igdbGamesMetadata[igdbId]
+                val updatedStoreUrls = existingGame.storeUrls.toMutableMap()
+                if (igdbGame != null) {
+                    updatedStoreUrls.putAll(extractStoreUrls(igdbGame, updatedSourceIds))
+                } else if (updatedSourceIds.containsKey("STEAM")) {
+                    updatedStoreUrls["Steam"] = "https://store.steampowered.com/app/${updatedSourceIds["STEAM"]}"
+                }
                 
                 gameDao.updateGame(existingGame.copy(
                     platforms = updatedPlatforms,
                     playtimes = updatedPlaytimes,
                     sourceIds = updatedSourceIds,
                     playtimeMinutes = updatedPlaytimes.values.sum(),
-                    releaseDate = if (existingGame.isReleaseDateManual) existingGame.releaseDate else existingGame.releaseDate
+                    storeUrls = updatedStoreUrls
                 ))
             } else {
                 // New game (Requires metadata we fetched)
@@ -194,7 +203,16 @@ class GameRepository(
                     genres = igdbGame.genres?.map { it.name } ?: emptyList(),
                     summary = igdbGame.summary,
                     screenshotUrls = igdbGame.screenshots?.map { getFullScreenshotUrl(it.url) } ?: emptyList(),
-                    igdbUrl = igdbGame.url
+                    igdbUrl = igdbGame.url,
+                    userRating = igdbGame.rating,
+                    criticRating = igdbGame.aggregatedRating,
+                    developers = igdbGame.involvedCompanies?.filter { it.developer }?.mapNotNull { it.company?.name } ?: emptyList(),
+                    publishers = igdbGame.involvedCompanies?.filter { it.publisher }?.mapNotNull { it.company?.name } ?: emptyList(),
+                    themes = igdbGame.themes?.map { it.name } ?: emptyList(),
+                    keywords = igdbGame.keywords?.map { it.name } ?: emptyList(),
+                    storeUrls = extractStoreUrls(igdbGame, mapOf("STEAM" to steamAppId)).toMutableMap().apply {
+                        if (!containsKey("Steam")) put("Steam", "https://store.steampowered.com/app/$steamAppId")
+                    }
                 )
                 gameDao.insertGame(game)
                 importedCount++
@@ -316,13 +334,19 @@ class GameRepository(
                 
                 val updatedSourceIds = existingGame.sourceIds.toMutableMap()
                 updatedSourceIds["GOG"] = gogSourceId
+
+                val igdbGame = igdbGamesMetadata[igdbId]
+                val updatedStoreUrls = existingGame.storeUrls.toMutableMap()
+                if (igdbGame != null) {
+                    updatedStoreUrls.putAll(extractStoreUrls(igdbGame, updatedSourceIds))
+                }
                 
                 gameDao.updateGame(existingGame.copy(
                     platforms = updatedPlatforms,
                     playtimes = updatedPlaytimes,
                     sourceIds = updatedSourceIds,
                     playtimeMinutes = updatedPlaytimes.values.sum(),
-                    releaseDate = if (existingGame.isReleaseDateManual) existingGame.releaseDate else existingGame.releaseDate
+                    storeUrls = updatedStoreUrls
                 ))
             } else {
                 val igdbGame = igdbGamesMetadata[igdbId] ?: return@forEachIndexed
@@ -338,7 +362,14 @@ class GameRepository(
                     genres = igdbGame.genres?.map { it.name } ?: emptyList(),
                     summary = igdbGame.summary,
                     screenshotUrls = igdbGame.screenshots?.map { getFullScreenshotUrl(it.url) } ?: emptyList(),
-                    igdbUrl = igdbGame.url
+                    igdbUrl = igdbGame.url,
+                    userRating = igdbGame.rating,
+                    criticRating = igdbGame.aggregatedRating,
+                    developers = igdbGame.involvedCompanies?.filter { it.developer }?.mapNotNull { it.company?.name } ?: emptyList(),
+                    publishers = igdbGame.involvedCompanies?.filter { it.publisher }?.mapNotNull { it.company?.name } ?: emptyList(),
+                    themes = igdbGame.themes?.map { it.name } ?: emptyList(),
+                    keywords = igdbGame.keywords?.map { it.name } ?: emptyList(),
+                    storeUrls = extractStoreUrls(igdbGame, mapOf("GOG" to gogSourceId))
                 )
                 gameDao.insertGame(game)
                 importedCount++
@@ -416,12 +447,19 @@ class GameRepository(
                 val updatedPlaytimes = existingGame.playtimes.toMutableMap()
                 updatedPlaytimes[sourcePlatform] = playtimeMin
                 
+                val igdbGame = igdbGamesMetadata[igdbId]
+                val updatedStoreUrls = existingGame.storeUrls.toMutableMap()
+                if (igdbGame != null) {
+                    updatedStoreUrls.putAll(extractStoreUrls(igdbGame, existingGame.sourceIds))
+                }
+
                 gameDao.updateGame(existingGame.copy(
                     platforms = updatedPlatforms,
                     playtimes = updatedPlaytimes,
                     playtimeMinutes = updatedPlaytimes.values.sum(),
                     completionStatus = status,
-                    releaseDate = if (existingGame.isReleaseDateManual) existingGame.releaseDate else normalizeDate(pGame.releaseDate?.releaseDate)
+                    releaseDate = if (existingGame.isReleaseDateManual) existingGame.releaseDate else normalizeDate(pGame.releaseDate?.releaseDate),
+                    storeUrls = updatedStoreUrls
                 ))
             } else {
                 val igdbGame = igdbGamesMetadata[igdbId] ?: return@forEachIndexed
@@ -437,7 +475,14 @@ class GameRepository(
                     completionStatus = status,
                     summary = igdbGame.summary,
                     screenshotUrls = igdbGame.screenshots?.map { getFullScreenshotUrl(it.url) } ?: emptyList(),
-                    igdbUrl = igdbGame.url
+                    igdbUrl = igdbGame.url,
+                    userRating = igdbGame.rating,
+                    criticRating = igdbGame.aggregatedRating,
+                    developers = igdbGame.involvedCompanies?.filter { it.developer }?.mapNotNull { it.company?.name } ?: emptyList(),
+                    publishers = igdbGame.involvedCompanies?.filter { it.publisher }?.mapNotNull { it.company?.name } ?: emptyList(),
+                    themes = igdbGame.themes?.map { it.name } ?: emptyList(),
+                    keywords = igdbGame.keywords?.map { it.name } ?: emptyList(),
+                    storeUrls = extractStoreUrls(igdbGame, emptyMap())
                 )
                 gameDao.insertGame(game)
                 importedCount++
@@ -472,11 +517,15 @@ class GameRepository(
             val updatedSourceIds = existingGame.sourceIds.toMutableMap()
             updatedSourceIds[sourceKey] = unmatchedGame.storeId
             
+            val updatedStoreUrls = existingGame.storeUrls.toMutableMap()
+            updatedStoreUrls.putAll(extractStoreUrls(igdbGame, updatedSourceIds))
+
             gameDao.updateGame(existingGame.copy(
                 platforms = updatedPlatforms,
                 playtimes = updatedPlaytimes,
                 sourceIds = updatedSourceIds,
-                playtimeMinutes = updatedPlaytimes.values.sum()
+                playtimeMinutes = updatedPlaytimes.values.sum(),
+                storeUrls = updatedStoreUrls
             ))
         } else {
             val game = Game(
@@ -491,7 +540,14 @@ class GameRepository(
                 genres = igdbGame.genres?.map { it.name } ?: emptyList(),
                 summary = igdbGame.summary,
                 screenshotUrls = igdbGame.screenshots?.map { getFullScreenshotUrl(it.url) } ?: emptyList(),
-                igdbUrl = igdbGame.url
+                igdbUrl = igdbGame.url,
+                userRating = igdbGame.rating,
+                criticRating = igdbGame.aggregatedRating,
+                developers = igdbGame.involvedCompanies?.filter { it.developer }?.mapNotNull { it.company?.name } ?: emptyList(),
+                publishers = igdbGame.involvedCompanies?.filter { it.publisher }?.mapNotNull { it.company?.name } ?: emptyList(),
+                themes = igdbGame.themes?.map { it.name } ?: emptyList(),
+                keywords = igdbGame.keywords?.map { it.name } ?: emptyList(),
+                storeUrls = extractStoreUrls(igdbGame, mapOf(sourceKey to unmatchedGame.storeId))
             )
             gameDao.insertGame(game)
         }
@@ -587,7 +643,14 @@ class GameRepository(
             genres = igdbGame.genres?.map { it.name } ?: emptyList(),
             summary = igdbGame.summary,
             screenshotUrls = igdbGame.screenshots?.map { getFullScreenshotUrl(it.url) } ?: emptyList(),
-            igdbUrl = igdbGame.url
+            igdbUrl = igdbGame.url,
+            userRating = igdbGame.rating,
+            criticRating = igdbGame.aggregatedRating,
+            developers = igdbGame.involvedCompanies?.filter { it.developer }?.mapNotNull { it.company?.name } ?: emptyList(),
+            publishers = igdbGame.involvedCompanies?.filter { it.publisher }?.mapNotNull { it.company?.name } ?: emptyList(),
+            themes = igdbGame.themes?.map { it.name } ?: emptyList(),
+            keywords = igdbGame.keywords?.map { it.name } ?: emptyList(),
+            storeUrls = extractStoreUrls(igdbGame, existingGame.sourceIds)
             // Keep: id, platforms, isOwned, sourceIds, playtimes, playtimeMinutes, labels, completionStatus
         )
         
@@ -717,20 +780,73 @@ class GameRepository(
         val existing = gameDao.getGameById(gameId) ?: return@withContext
         val igdbId = existing.igdbId ?: return@withContext
 
-        // Only fetch if missing essential new metadata
-        if (!existing.summary.isNullOrBlank() && existing.screenshotUrls.isNotEmpty()) return@withContext
+        // Refresh if missing summary OR screenshots OR companies OR store links
+        val needsRefresh = existing.summary.isNullOrBlank() || 
+                           existing.screenshotUrls.isEmpty() || 
+                           existing.developers.isEmpty() ||
+                           existing.storeUrls.isEmpty()
+
+        if (!needsRefresh) return@withContext
+
+        println("Enriching metadata for: ${existing.title} (IGDB ID: $igdbId)")
 
         val clientId = settingsRepository.clientId.firstOrNull() ?: return@withContext
         val clientSecret = settingsRepository.clientSecret.firstOrNull() ?: return@withContext
-        igdbClient.authenticate(clientId, clientSecret)
+        
+        val authSuccess = igdbClient.authenticate(clientId, clientSecret)
+        if (!authSuccess) {
+            println("Enrichment Failed: IGDB Auth error")
+            return@withContext
+        }
 
         val igdbGames = igdbClient.getGamesByIds(clientId, listOf(igdbId))
-        val igdbGame = igdbGames.firstOrNull() ?: return@withContext
+        val igdbGame = igdbGames.firstOrNull() ?: run {
+            println("Enrichment Failed: No game found on IGDB for ID $igdbId")
+            return@withContext
+        }
 
-        gameDao.updateGame(existing.copy(
+        val updatedGame = existing.copy(
             summary = igdbGame.summary,
             screenshotUrls = igdbGame.screenshots?.map { getFullScreenshotUrl(it.url) } ?: emptyList(),
-            igdbUrl = igdbGame.url
-        ))
+            igdbUrl = igdbGame.url,
+            userRating = igdbGame.rating,
+            criticRating = igdbGame.aggregatedRating,
+            developers = igdbGame.involvedCompanies?.filter { it.developer }?.mapNotNull { it.company?.name } ?: emptyList(),
+            publishers = igdbGame.involvedCompanies?.filter { it.publisher }?.mapNotNull { it.company?.name } ?: emptyList(),
+            themes = igdbGame.themes?.map { it.name } ?: emptyList(),
+            keywords = igdbGame.keywords?.map { it.name } ?: emptyList(),
+            storeUrls = extractStoreUrls(igdbGame, existing.sourceIds)
+        )
+        
+        gameDao.updateGame(updatedGame)
+        println("Enrichment Complete for: ${existing.title}")
+    }
+
+    /**
+     * Extracts store URLs from IGDB metadata.
+     */
+    fun extractStoreUrls(igdbGame: IgdbGame, sourceIds: Map<String, String>): Map<String, String> {
+        val urls = mutableMapOf<String, String>()
+        
+        // Steam (Category 1)
+        val steamId = sourceIds["STEAM"] ?: igdbGame.externalGames?.find { it.category == IgdbExternalCategory.STEAM }?.uid
+        if (steamId != null) {
+            urls["Steam"] = "https://store.steampowered.com/app/$steamId"
+        }
+
+        // GOG (Category 5)
+        // If we have a URL from IGDB, use it.
+        val gogUrl = igdbGame.externalGames?.find { it.category == IgdbExternalCategory.GOG }?.url
+        if (gogUrl != null) {
+            urls["GOG"] = gogUrl
+        }
+
+        // Epic Games (Category 26)
+        val epicUrl = igdbGame.externalGames?.find { it.category == IgdbExternalCategory.EPIC_GAMES }?.url
+        if (epicUrl != null) {
+            urls["Epic"] = epicUrl
+        }
+
+        return urls
     }
 }

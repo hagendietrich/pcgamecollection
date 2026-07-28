@@ -24,5 +24,12 @@ data class Game(
     val isReleaseDateManual: Boolean = false,
     val summary: String? = null,
     val screenshotUrls: List<String> = emptyList(),
-    val igdbUrl: String? = null
+    val igdbUrl: String? = null,
+    val userRating: Double? = null,
+    val criticRating: Double? = null,
+    val developers: List<String> = emptyList(),
+    val publishers: List<String> = emptyList(),
+    val themes: List<String> = emptyList(),
+    val keywords: List<String> = emptyList(),
+    val storeUrls: Map<String, String> = emptyMap()
 )

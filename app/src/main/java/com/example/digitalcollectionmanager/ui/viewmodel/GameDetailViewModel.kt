@@ -7,7 +7,6 @@ import com.example.digitalcollectionmanager.data.repository.GameRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 class GameDetailViewModel(
@@ -27,8 +26,13 @@ class GameDetailViewModel(
             gameRepository.getAllGames().collect { games ->
                 val game = games.find { it.id == gameId }
                 if (game != null) {
-                    // Start enrichment if missing metadata
-                    if (game.summary.isNullOrBlank() || game.screenshotUrls.isEmpty()) {
+                    // Start enrichment if missing metadata (aligned with repo logic)
+                    val needsEnrichment = game.summary.isNullOrBlank() || 
+                                          game.screenshotUrls.isEmpty() || 
+                                          game.developers.isEmpty() ||
+                                          game.storeUrls.isEmpty()
+                    
+                    if (needsEnrichment) {
                         enrichGame()
                     }
                     _uiState.value = GameDetailUiState.Success(game)

@@ -64,7 +64,14 @@ class AddGameViewModel(
                 genres = igdbGame.genres?.map { it.name } ?: emptyList(),
                 summary = igdbGame.summary,
                 screenshotUrls = igdbGame.screenshots?.map { gameRepository.getFullScreenshotUrl(it.url) } ?: emptyList(),
-                igdbUrl = igdbGame.url
+                igdbUrl = igdbGame.url,
+                userRating = igdbGame.rating,
+                criticRating = igdbGame.aggregatedRating,
+                developers = igdbGame.involvedCompanies?.filter { it.developer }?.mapNotNull { it.company?.name } ?: emptyList(),
+                publishers = igdbGame.involvedCompanies?.filter { it.publisher }?.mapNotNull { it.company?.name } ?: emptyList(),
+                themes = igdbGame.themes?.map { it.name } ?: emptyList(),
+                keywords = igdbGame.keywords?.map { it.name } ?: emptyList(),
+                storeUrls = gameRepository.extractStoreUrls(igdbGame, mapOf("IGDB" to igdbGame.id.toString()))
             )
             gameRepository.addGame(game)
             
