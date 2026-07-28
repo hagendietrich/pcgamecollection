@@ -191,7 +191,10 @@ class GameRepository(
                     sourceIds = mapOf("STEAM" to steamAppId),
                     playtimes = mapOf("Steam" to steamGame.playtime_forever),
                     playtimeMinutes = steamGame.playtime_forever,
-                    genres = igdbGame.genres?.map { it.name } ?: emptyList()
+                    genres = igdbGame.genres?.map { it.name } ?: emptyList(),
+                    summary = igdbGame.summary,
+                    screenshotUrls = igdbGame.screenshots?.map { getFullScreenshotUrl(it.url) } ?: emptyList(),
+                    igdbUrl = igdbGame.url
                 )
                 gameDao.insertGame(game)
                 importedCount++
@@ -332,7 +335,10 @@ class GameRepository(
                     sourceIds = mapOf("GOG" to gogSourceId),
                     playtimes = mapOf("GOG" to gogGame.playtimeMinutes),
                     playtimeMinutes = gogGame.playtimeMinutes,
-                    genres = igdbGame.genres?.map { it.name } ?: emptyList()
+                    genres = igdbGame.genres?.map { it.name } ?: emptyList(),
+                    summary = igdbGame.summary,
+                    screenshotUrls = igdbGame.screenshots?.map { getFullScreenshotUrl(it.url) } ?: emptyList(),
+                    igdbUrl = igdbGame.url
                 )
                 gameDao.insertGame(game)
                 importedCount++
@@ -428,7 +434,10 @@ class GameRepository(
                     playtimes = mapOf(sourcePlatform to playtimeMin),
                     playtimeMinutes = playtimeMin,
                     genres = igdbGame.genres?.map { it.name } ?: emptyList(),
-                    completionStatus = status
+                    completionStatus = status,
+                    summary = igdbGame.summary,
+                    screenshotUrls = igdbGame.screenshots?.map { getFullScreenshotUrl(it.url) } ?: emptyList(),
+                    igdbUrl = igdbGame.url
                 )
                 gameDao.insertGame(game)
                 importedCount++
@@ -479,7 +488,10 @@ class GameRepository(
                 sourceIds = mapOf(sourceKey to unmatchedGame.storeId),
                 playtimes = mapOf(unmatchedGame.platform to unmatchedGame.playtimeMinutes),
                 playtimeMinutes = unmatchedGame.playtimeMinutes,
-                genres = igdbGame.genres?.map { it.name } ?: emptyList()
+                genres = igdbGame.genres?.map { it.name } ?: emptyList(),
+                summary = igdbGame.summary,
+                screenshotUrls = igdbGame.screenshots?.map { getFullScreenshotUrl(it.url) } ?: emptyList(),
+                igdbUrl = igdbGame.url
             )
             gameDao.insertGame(game)
         }
@@ -572,7 +584,10 @@ class GameRepository(
             coverImageUrl = getFullCoverUrl(igdbGame.cover?.url),
             releaseDate = if (existingGame.isReleaseDateManual) existingGame.releaseDate else normalizeDate(formatTimestamp(igdbGame.firstReleaseDate)),
             igdbId = igdbGame.id,
-            genres = igdbGame.genres?.map { it.name } ?: emptyList()
+            genres = igdbGame.genres?.map { it.name } ?: emptyList(),
+            summary = igdbGame.summary,
+            screenshotUrls = igdbGame.screenshots?.map { getFullScreenshotUrl(it.url) } ?: emptyList(),
+            igdbUrl = igdbGame.url
             // Keep: id, platforms, isOwned, sourceIds, playtimes, playtimeMinutes, labels, completionStatus
         )
         
@@ -597,6 +612,10 @@ class GameRepository(
 
     fun getFullCoverUrl(thumbUrl: String?): String? {
         return thumbUrl?.let { igdbClient.getFullCoverUrl(it) }
+    }
+
+    fun getFullScreenshotUrl(thumbUrl: String): String {
+        return "https:" + thumbUrl.replace("t_thumb", "t_screenshot_huge")
     }
 
     fun formatTimestamp(timestamp: Long?): String? {
@@ -689,5 +708,29 @@ class GameRepository(
      */
     suspend fun clearLibrary() = withContext(Dispatchers.IO) {
         gameDao.deleteAllGames()
+    }
+
+    /**
+     * Fetches missing metadata (summary, screenshots, url) for a game if not already present.
+     */
+    suspend fun refreshGameMetadata(gameId: Int) = withContext(Dispatchers.IO) {
+        val existing = gameDao.getGameById(gameId) ?: return@withContext
+        val igdbId = existing.igdbId ?: return@withContext
+
+        // Only fetch if missing essential new metadata
+        if (!existing.summary.isNullOrBlank() && existing.screenshotUrls.isNotEmpty()) return@withContext
+
+        val clientId = settingsRepository.clientId.firstOrNull() ?: return@withContext
+        val clientSecret = settingsRepository.clientSecret.firstOrNull() ?: return@withContext
+        igdbClient.authenticate(clientId, clientSecret)
+
+        val igdbGames = igdbClient.getGamesByIds(clientId, listOf(igdbId))
+        val igdbGame = igdbGames.firstOrNull() ?: return@withContext
+
+        gameDao.updateGame(existing.copy(
+            summary = igdbGame.summary,
+            screenshotUrls = igdbGame.screenshots?.map { getFullScreenshotUrl(it.url) } ?: emptyList(),
+            igdbUrl = igdbGame.url
+        ))
     }
 }

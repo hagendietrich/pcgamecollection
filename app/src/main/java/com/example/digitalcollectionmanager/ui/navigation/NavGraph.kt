@@ -15,12 +15,17 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.navigation.NavType
+import androidx.navigation.navArgument
 
 sealed class Screen(val route: String) {
     object Library : Screen("library")
     object AddGame : Screen("add_game")
     object Setup : Screen("setup")
     object ImportExport : Screen("import_export")
+    object GameDetails : Screen("game_details/{gameId}") {
+        fun createRoute(gameId: Int) = "game_details/$gameId"
+    }
 }
 
 @Composable
@@ -49,7 +54,10 @@ fun AppNavGraph(
             GameListScreen(
                 viewModel = viewModel,
                 onNavigate = { route -> navController.navigate(route) },
-                onAddGame = { navController.navigate(Screen.AddGame.route) }
+                onAddGame = { navController.navigate(Screen.AddGame.route) },
+                onShowFullDetails = { gameId ->
+                    navController.navigate(Screen.GameDetails.createRoute(gameId))
+                }
             )
         }
         composable(Screen.AddGame.route) {
@@ -79,6 +87,24 @@ fun AppNavGraph(
             ImportScreen(
                 viewModel = viewModel,
                 onNavigate = { route -> navController.navigate(route) },
+                onBack = { navController.popBackStack() }
+            )
+        }
+        composable(
+            route = Screen.GameDetails.route,
+            arguments = listOf(navArgument("gameId") { type = NavType.IntType })
+        ) { backStackEntry ->
+            val gameId = backStackEntry.arguments?.getInt("gameId") ?: 0
+            val viewModel: GameDetailViewModel = viewModel(
+                factory = object : ViewModelProvider.Factory {
+                    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                        @Suppress("UNCHECKED_CAST")
+                        return GameDetailViewModel(gameId, gameRepository) as T
+                    }
+                }
+            )
+            GameDetailScreen(
+                viewModel = viewModel,
                 onBack = { navController.popBackStack() }
             )
         }

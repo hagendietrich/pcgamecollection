@@ -61,7 +61,10 @@ class AddGameViewModel(
                 isOwned = true,
                 igdbId = igdbGame.id,
                 sourceIds = mapOf("IGDB" to igdbGame.id.toString()),
-                genres = igdbGame.genres?.map { it.name } ?: emptyList()
+                genres = igdbGame.genres?.map { it.name } ?: emptyList(),
+                summary = igdbGame.summary,
+                screenshotUrls = igdbGame.screenshots?.map { gameRepository.getFullScreenshotUrl(it.url) } ?: emptyList(),
+                igdbUrl = igdbGame.url
             )
             gameRepository.addGame(game)
             

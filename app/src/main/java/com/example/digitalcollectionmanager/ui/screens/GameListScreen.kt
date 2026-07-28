@@ -48,7 +48,8 @@ import kotlinx.coroutines.flow.first
 fun GameListScreen(
     viewModel: GameListViewModel,
     onNavigate: (String) -> Unit,
-    onAddGame: () -> Unit
+    onAddGame: () -> Unit,
+    onShowFullDetails: (Int) -> Unit
 ) {
     val allGames by viewModel.allGames.collectAsState()
     val groupedGames by viewModel.groupedGames.collectAsState()
@@ -337,6 +338,10 @@ fun GameListScreen(
                 onReMatchClick = {
                     viewModel.searchForReMatch(selectedGame!!.title)
                     showReMatchDialog = true
+                },
+                onShowFullDetails = { 
+                    showBottomSheet = false
+                    onShowFullDetails(it)
                 }
             )
         }
@@ -534,7 +539,8 @@ fun GameDetailContent(
     viewModel: GameListViewModel,
     onUpdate: (Game) -> Unit,
     onDelete: () -> Unit,
-    onReMatchClick: () -> Unit
+    onReMatchClick: () -> Unit,
+    onShowFullDetails: (Int) -> Unit
 ) {
     var showPlaytimePicker by remember { mutableStateOf(false) }
     var showAddLabelDialog by remember { mutableStateOf(false) }
@@ -571,7 +577,8 @@ fun GameDetailContent(
             contentDescription = null,
             modifier = Modifier
                 .height(240.dp)
-                .aspectRatio(0.75f),
+                .aspectRatio(0.75f)
+                .clickable { onShowFullDetails(game.id) },
             contentScale = ContentScale.Crop
         )
         Spacer(modifier = Modifier.height(16.dp))
