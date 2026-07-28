@@ -46,8 +46,8 @@ class GameListViewModel(
 
         val sorted = when (sortOrder) {
             SortOrder.TITLE_ASC -> filtered.sortedBy { it.title.lowercase() }
-            SortOrder.RELEASE_DATE_ASC -> filtered.sortedBy { it.releaseDate }
-            SortOrder.RELEASE_DATE_DESC -> filtered.sortedByDescending { it.releaseDate }
+            SortOrder.RELEASE_DATE_ASC -> filtered.sortedBy { gameRepository.normalizeDate(it.releaseDate) ?: "" }
+            SortOrder.RELEASE_DATE_DESC -> filtered.sortedByDescending { gameRepository.normalizeDate(it.releaseDate) ?: "" }
             SortOrder.PLAYTIME_ASC -> filtered.sortedBy { it.playtimeMinutes }
             SortOrder.PLAYTIME_DESC -> filtered.sortedByDescending { it.playtimeMinutes }
         }
@@ -249,6 +249,19 @@ class GameListViewModel(
     fun updateGame(game: Game) {
         viewModelScope.launch {
             gameRepository.updateGame(game)
+        }
+    }
+
+    fun updateReleaseDate(gameId: Int, newDate: String) {
+        viewModelScope.launch {
+            val games = gameRepository.getAllGames().first()
+            games.find { it.id == gameId }?.let { game ->
+                val normalized = gameRepository.normalizeDate(newDate) ?: newDate
+                gameRepository.updateGame(game.copy(
+                    releaseDate = normalized,
+                    isReleaseDateManual = true
+                ))
+            }
         }
     }
 }

@@ -539,6 +539,7 @@ fun GameDetailContent(
     var showPlaytimePicker by remember { mutableStateOf(false) }
     var showAddLabelDialog by remember { mutableStateOf(false) }
     var showAddGenreDialog by remember { mutableStateOf(false) }
+    var showReleaseDatePicker by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -578,10 +579,21 @@ fun GameDetailContent(
             text = stringResource(R.string.detail_platform, game.platforms.joinToString(", ")),
             style = MaterialTheme.typography.bodyMedium
         )
-        game.releaseDate?.let {
+        
+        Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                text = stringResource(R.string.detail_released, it),
+                text = stringResource(R.string.detail_released, ""),
                 style = MaterialTheme.typography.bodyMedium
+            )
+            Text(
+                text = game.releaseDate ?: "Add Release Date",
+                style = MaterialTheme.typography.bodyMedium.copy(
+                    textDecoration = if (game.releaseDate == null) androidx.compose.ui.text.style.TextDecoration.Underline else null
+                ),
+                modifier = Modifier.combinedClickable(
+                    onClick = { if (game.releaseDate == null) showReleaseDatePicker = true },
+                    onLongClick = { showReleaseDatePicker = true }
+                )
             )
         }
 
@@ -698,7 +710,7 @@ fun GameDetailContent(
 
     if (showPlaytimePicker) {
         PlaytimePickerDialog(
-            initialMinutes = game.playtimeMinutes,
+            initialMinutes = game.playtimes["Manual"] ?: 0,
             onDismiss = { showPlaytimePicker = false },
             onConfirm = { newMinutes ->
                 // When manually updating playtime, we store it under a "Manual" source in our internal map
@@ -712,6 +724,17 @@ fun GameDetailContent(
                 ))
                 showPlaytimePicker = false
             }
+        )
+    }
+
+    if (showReleaseDatePicker) {
+        SetReleaseDateDialog(
+            initialDate = game.releaseDate ?: "",
+            onConfirm = { 
+                viewModel.updateReleaseDate(game.id, it)
+                showReleaseDatePicker = false 
+            },
+            onDismiss = { showReleaseDatePicker = false }
         )
     }
 
@@ -842,7 +865,7 @@ fun PlaytimePickerDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Set Playtime") },
+        title = { Text("Set Offline Playtime") },
         text = {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -890,6 +913,47 @@ fun PlaytimePickerDialog(
                     onConfirm(h * 60 + m)
                 }
             ) {
+                Text("Confirm")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
+}
+
+@Composable
+fun SetReleaseDateDialog(
+    initialDate: String,
+    onConfirm: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var dateText by remember { mutableStateOf(initialDate) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Set Release Date") },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    "Enter date in YYYY-MM-DD format:",
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+                OutlinedTextField(
+                    value = dateText,
+                    onValueChange = { dateText = it },
+                    label = { Text("Release Date") },
+                    placeholder = { Text("e.g. 2024-05-20") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(dateText) }) {
                 Text("Confirm")
             }
         },

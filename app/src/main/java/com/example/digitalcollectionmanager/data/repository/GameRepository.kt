@@ -176,7 +176,8 @@ class GameRepository(
                     platforms = updatedPlatforms,
                     playtimes = updatedPlaytimes,
                     sourceIds = updatedSourceIds,
-                    playtimeMinutes = updatedPlaytimes.values.sum()
+                    playtimeMinutes = updatedPlaytimes.values.sum(),
+                    releaseDate = if (existingGame.isReleaseDateManual) existingGame.releaseDate else existingGame.releaseDate
                 ))
             } else {
                 // New game (Requires metadata we fetched)
@@ -317,7 +318,8 @@ class GameRepository(
                     platforms = updatedPlatforms,
                     playtimes = updatedPlaytimes,
                     sourceIds = updatedSourceIds,
-                    playtimeMinutes = updatedPlaytimes.values.sum()
+                    playtimeMinutes = updatedPlaytimes.values.sum(),
+                    releaseDate = if (existingGame.isReleaseDateManual) existingGame.releaseDate else existingGame.releaseDate
                 ))
             } else {
                 val igdbGame = igdbGamesMetadata[igdbId] ?: return@forEachIndexed
@@ -412,7 +414,8 @@ class GameRepository(
                     platforms = updatedPlatforms,
                     playtimes = updatedPlaytimes,
                     playtimeMinutes = updatedPlaytimes.values.sum(),
-                    completionStatus = status
+                    completionStatus = status,
+                    releaseDate = if (existingGame.isReleaseDateManual) existingGame.releaseDate else normalizeDate(pGame.releaseDate?.releaseDate)
                 ))
             } else {
                 val igdbGame = igdbGamesMetadata[igdbId] ?: return@forEachIndexed
@@ -420,7 +423,7 @@ class GameRepository(
                     title = igdbGame.name,
                     platforms = listOf(sourcePlatform),
                     coverImageUrl = getFullCoverUrl(igdbGame.cover?.url),
-                    releaseDate = pGame.releaseDate?.releaseDate ?: formatTimestamp(igdbGame.firstReleaseDate),
+                    releaseDate = normalizeDate(pGame.releaseDate?.releaseDate) ?: formatTimestamp(igdbGame.firstReleaseDate),
                     igdbId = igdbId,
                     playtimes = mapOf(sourcePlatform to playtimeMin),
                     playtimeMinutes = playtimeMin,
@@ -471,7 +474,7 @@ class GameRepository(
                 title = igdbGame.name,
                 platforms = listOf(unmatchedGame.platform),
                 coverImageUrl = getFullCoverUrl(igdbGame.cover?.url),
-                releaseDate = formatTimestamp(igdbGame.firstReleaseDate),
+                releaseDate = normalizeDate(formatTimestamp(igdbGame.firstReleaseDate)),
                 igdbId = igdbGame.id,
                 sourceIds = mapOf(sourceKey to unmatchedGame.storeId),
                 playtimes = mapOf(unmatchedGame.platform to unmatchedGame.playtimeMinutes),
@@ -567,7 +570,7 @@ class GameRepository(
         val updatedGame = existingGame.copy(
             title = igdbGame.name,
             coverImageUrl = getFullCoverUrl(igdbGame.cover?.url),
-            releaseDate = formatTimestamp(igdbGame.firstReleaseDate),
+            releaseDate = if (existingGame.isReleaseDateManual) existingGame.releaseDate else normalizeDate(formatTimestamp(igdbGame.firstReleaseDate)),
             igdbId = igdbGame.id,
             genres = igdbGame.genres?.map { it.name } ?: emptyList()
             // Keep: id, platforms, isOwned, sourceIds, playtimes, playtimeMinutes, labels, completionStatus
@@ -598,15 +601,44 @@ class GameRepository(
 
     fun formatTimestamp(timestamp: Long?): String? {
         if (timestamp == null) return null
-        if (timestamp < 5000) return timestamp.toString()
+        
+        // If it's just a year (e.g. from IGDB or previous logic)
+        if (timestamp > 1900 && timestamp < 2100) {
+            return "$timestamp-01-01"
+        }
         
         return try {
             val date = Date(timestamp * 1000L)
-            val format = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+            val format = SimpleDateFormat("yyyy-MM-dd", Locale.US)
             format.format(date)
         } catch (e: Exception) {
             null
         }
+    }
+
+    /**
+     * Normalizes a date string to YYYY-MM-DD format.
+     */
+    fun normalizeDate(dateStr: String?): String? {
+        if (dateStr == null || dateStr.isBlank()) return null
+        
+        val trimmed = dateStr.trim()
+        
+        // Handle YYYY
+        if (trimmed.length == 4 && trimmed.all { it.isDigit() }) {
+            return "$trimmed-01-01"
+        }
+        
+        // Handle YYYY-M-D and variants
+        val parts = trimmed.split("-", "/", ".")
+        if (parts.size == 3) {
+            val y = parts[0].padStart(4, '2').takeLast(4) // Assume YYYY
+            val m = parts[1].padStart(2, '0')
+            val d = parts[2].padStart(2, '0')
+            return "$y-$m-$d"
+        }
+        
+        return trimmed
     }
 
     /**
@@ -632,12 +664,20 @@ class GameRepository(
                 (imported.igdbId != null && local.igdbId == imported.igdbId) ||
                 (local.title.equals(imported.title, ignoreCase = true))
             }
+            
+            val normalizedImported = imported.copy(
+                releaseDate = normalizeDate(imported.releaseDate)
+            )
+
             if (existing != null) {
                 // Keep the database ID of the existing record to trigger an UPDATE instead of an INSERT
-                imported.copy(id = existing.id)
+                // If the existing game has a manual date, and the imported one doesn't, we might want to keep the manual one.
+                // But usually a JSON import/restore is meant to be a full state sync.
+                // We'll trust the JSON state (which includes the manual flag).
+                normalizedImported.copy(id = existing.id)
             } else {
                 // No match found, insert as a new game
-                imported.copy(id = 0)
+                normalizedImported.copy(id = 0)
             }
         }
         

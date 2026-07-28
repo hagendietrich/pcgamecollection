@@ -57,7 +57,7 @@ class AddGameViewModel(
                 title = igdbGame.name,
                 platforms = listOf("IGDB"),
                 coverImageUrl = igdbGame.cover?.url?.let { gameRepository.getFullCoverUrl(it) },
-                releaseDate = gameRepository.formatTimestamp(igdbGame.firstReleaseDate),
+                releaseDate = gameRepository.normalizeDate(gameRepository.formatTimestamp(igdbGame.firstReleaseDate)),
                 isOwned = true,
                 igdbId = igdbGame.id,
                 sourceIds = mapOf("IGDB" to igdbGame.id.toString()),

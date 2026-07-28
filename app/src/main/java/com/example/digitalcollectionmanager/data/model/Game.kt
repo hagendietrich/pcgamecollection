@@ -20,5 +20,6 @@ data class Game(
     val playtimeMinutes: Int = 0, // Aggregated total playtime in minutes
     val genres: List<String> = emptyList(),
     val labels: List<String> = emptyList(),
-    val completionStatus: CompletionStatus = CompletionStatus.BACKLOG
+    val completionStatus: CompletionStatus = CompletionStatus.BACKLOG,
+    val isReleaseDateManual: Boolean = false
 )

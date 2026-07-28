@@ -138,7 +138,7 @@ Vertical grid of game covers:
     - Uses Android's Storage Access Framework for secure saving.
 - **CSV Import**: Allow users to re-import collections from CSV.
 
-**Status**: 🛠️ Partially Complete — CSV Export implemented.
+**Status**: ✅ Complete — CSV Export implemented.
 
 ---
 
