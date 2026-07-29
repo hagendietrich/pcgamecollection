@@ -2,6 +2,7 @@
     <string name="app_name">Digital Collection Manager</string>
     <string name="menu_my_games">My Games</string>
     <string name="menu_add_game">Add Game</string>
+    <string name="menu_sync">Cloud Sync</string>
     <string name="menu_import">Import/Export Games</string>
     <string name="import_export_title">Import/Export</string>
     <string name="menu_settings">Settings (IGDB)</string>
@@ -27,6 +28,8 @@
     <string name="detail_mode_multiplayer">Multiplayer</string>
     <string name="detail_mode_coop">Co-op</string>
     <string name="detail_mode_edit">Edit Mode</string>
+    <string name="sync_title">Cloud Sync</string>
+    <string name="sync_all">Sync All Accounts</string>
     <string name="rating_users">Users:</string>
     <string name="rating_critics">Critics:</string>
     <string name="setup_welcome">Welcome to Digital Collection Manager</string>

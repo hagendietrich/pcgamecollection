@@ -13,7 +13,6 @@ import com.example.digitalcollectionmanager.data.repository.UnmatchedGame
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 
@@ -25,76 +24,12 @@ class ImportViewModel(
     private val _uiState = MutableStateFlow<ImportUiState>(ImportUiState.Idle)
     val uiState: StateFlow<ImportUiState> = _uiState.asStateFlow()
 
-    private val _lastSteamId = MutableStateFlow("")
-    val lastSteamId: StateFlow<String> = _lastSteamId.asStateFlow()
-
-    private val _lastGogUsername = MutableStateFlow("")
-    val lastGogUsername: StateFlow<String> = _lastGogUsername.asStateFlow()
-
     private val _playniteImportState = MutableStateFlow<PlayniteImportState>(PlayniteImportState.Idle)
     val playniteImportState: StateFlow<PlayniteImportState> = _playniteImportState.asStateFlow()
 
     private var tempPlayniteGames: List<PlayniteGame> = emptyList()
 
     init {
-        viewModelScope.launch {
-            _lastSteamId.value = settingsRepository.lastSteamId.firstOrNull() ?: ""
-            _lastGogUsername.value = settingsRepository.lastGogUsername.firstOrNull() ?: ""
-        }
-    }
-
-    fun importSteam(profileUrl: String) {
-        if (profileUrl.isBlank()) return
-        viewModelScope.launch {
-            settingsRepository.saveLastSteamId(profileUrl)
-            _uiState.value = ImportUiState.Loading(0f, "Initializing Steam import...")
-            try {
-                val result = gameRepository.syncSteamGames(profileUrl) { progress, message ->
-                    _uiState.value = ImportUiState.Loading(progress, message)
-                }
-                when {
-                    result.importedCount == -1 -> {
-                        _uiState.value = ImportUiState.Error("Steam API Key is missing. Please configure it in Settings.")
-                    }
-                    result.importedCount >= 0 -> {
-                        val msg = if (result.importedCount > 0) 
-                            "Successfully imported ${result.importedCount} games from Steam."
-                        else "Steam library checked. No new games were added."
-                        
-                        _uiState.value = ImportUiState.Success(msg, result.unmatchedGames)
-                    }
-                    else -> {
-                        _uiState.value = ImportUiState.Error("No games found. Check your Steam ID or Privacy Settings.")
-                    }
-                }
-            } catch (e: Exception) {
-                _uiState.value = ImportUiState.Error("Steam import failed: ${e.message}")
-            }
-        }
-    }
-
-    fun importGog(username: String) {
-        if (username.isBlank()) return
-        viewModelScope.launch {
-            settingsRepository.saveLastGogUsername(username)
-            _uiState.value = ImportUiState.Loading(0f, "Initializing GOG import...")
-            try {
-                val result = gameRepository.syncGogGames(username) { progress, message ->
-                    _uiState.value = ImportUiState.Loading(progress, message)
-                }
-                if (result.importedCount >= 0) {
-                    val msg = if (result.importedCount > 0)
-                        "Successfully imported ${result.importedCount} games from GOG."
-                    else "GOG library checked. No new games were added."
-                    
-                    _uiState.value = ImportUiState.Success(msg, result.unmatchedGames)
-                } else {
-                    _uiState.value = ImportUiState.Error("No games found. Ensure your profile is public.")
-                }
-            } catch (e: Exception) {
-                _uiState.value = ImportUiState.Error("GOG import failed: ${e.message}")
-            }
-        }
     }
 
     fun parsePlayniteJson(uri: Uri, contentResolver: ContentResolver) {

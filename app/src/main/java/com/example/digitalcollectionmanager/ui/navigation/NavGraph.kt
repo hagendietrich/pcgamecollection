@@ -22,6 +22,7 @@ sealed class Screen(val route: String) {
     object Library : Screen("library")
     object AddGame : Screen("add_game")
     object Setup : Screen("setup")
+    object Sync : Screen("sync")
     object ImportExport : Screen("import_export")
     object GameDetails : Screen("game_details/{gameId}") {
         fun createRoute(gameId: Int) = "game_details/$gameId"
@@ -85,6 +86,21 @@ fun AppNavGraph(
                 }
             )
             ImportScreen(
+                viewModel = viewModel,
+                onNavigate = { route -> navController.navigate(route) },
+                onBack = { navController.popBackStack() }
+            )
+        }
+        composable(Screen.Sync.route) {
+            val viewModel: SyncViewModel = viewModel(
+                factory = object : ViewModelProvider.Factory {
+                    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                        @Suppress("UNCHECKED_CAST")
+                        return SyncViewModel(gameRepository, settingsRepository) as T
+                    }
+                }
+            )
+            SyncScreen(
                 viewModel = viewModel,
                 onNavigate = { route -> navController.navigate(route) },
                 onBack = { navController.popBackStack() }

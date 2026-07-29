@@ -20,6 +20,7 @@ import com.example.digitalcollectionmanager.data.api.models.IgdbGame
 import com.example.digitalcollectionmanager.data.model.CompletionStatus
 import com.example.digitalcollectionmanager.data.repository.UnmatchedGame
 import com.example.digitalcollectionmanager.ui.components.AppTopBar
+import com.example.digitalcollectionmanager.ui.components.UnmatchedGameRow
 import com.example.digitalcollectionmanager.ui.viewmodel.ImportUiState
 import com.example.digitalcollectionmanager.ui.viewmodel.ImportViewModel
 import com.example.digitalcollectionmanager.ui.viewmodel.PlayniteImportState
@@ -31,13 +32,9 @@ fun ImportScreen(
     onBack: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    val lastSteamId by viewModel.lastSteamId.collectAsState()
-    val lastGogUsername by viewModel.lastGogUsername.collectAsState()
     val playniteImportState by viewModel.playniteImportState.collectAsState()
     val context = LocalContext.current
 
-    var steamUrl by remember(lastSteamId) { mutableStateOf(lastSteamId) }
-    var gogUsername by remember(lastGogUsername) { mutableStateOf(lastGogUsername) }
     var showWipeConfirm by remember { mutableStateOf(false) }
 
     val jsonExportLauncher = rememberLauncherForActivityResult(
@@ -170,49 +167,6 @@ fun ImportScreen(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                item {
-                    Card(modifier = Modifier.fillMaxWidth()) {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            Text("Steam Import", style = MaterialTheme.typography.titleMedium)
-                            OutlinedTextField(
-                                value = steamUrl,
-                                onValueChange = { steamUrl = it },
-                                label = { Text("Steam Profile URL or ID") },
-                                placeholder = { Text("e.g. tarrega8472") },
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
-                            )
-                            Button(
-                                onClick = { viewModel.importSteam(steamUrl) },
-                                modifier = Modifier.align(Alignment.End),
-                                enabled = uiState !is ImportUiState.Loading
-                            ) {
-                                Text("Import Steam")
-                            }
-                        }
-                    }
-                }
-
-                item {
-                    Card(modifier = Modifier.fillMaxWidth()) {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            Text("GOG Import", style = MaterialTheme.typography.titleMedium)
-                            OutlinedTextField(
-                                value = gogUsername,
-                                onValueChange = { gogUsername = it },
-                                label = { Text("GOG Username") },
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
-                            )
-                            Button(
-                                onClick = { viewModel.importGog(gogUsername) },
-                                modifier = Modifier.align(Alignment.End),
-                                enabled = uiState !is ImportUiState.Loading
-                            ) {
-                                Text("Import GOG")
-                            }
-                        }
-                    }
-                }
-
                 item {
                     Card(modifier = Modifier.fillMaxWidth()) {
                         Column(modifier = Modifier.padding(16.dp)) {
@@ -395,82 +349,4 @@ fun StatusMappingDialog(
             }
         }
     )
-}
-
-@Composable
-fun UnmatchedGameRow(
-    unmatched: UnmatchedGame,
-    onResolve: (IgdbGame) -> Unit,
-    onSearchCustom: (String) -> Unit
-) {
-    var expanded by remember { mutableStateOf(false) }
-    var searchText by remember(unmatched.storeTitle) { mutableStateOf(unmatched.storeTitle) }
-
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-    ) {
-        Column(modifier = Modifier.padding(8.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(unmatched.storeTitle, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
-                    Text("${unmatched.platform} ID: ${unmatched.storeId}", style = MaterialTheme.typography.labelSmall)
-                }
-                Button(
-                    onClick = { expanded = !expanded },
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                    modifier = Modifier.height(32.dp)
-                ) {
-                    Text(if (expanded) "Close" else "Resolve", style = MaterialTheme.typography.labelMedium)
-                }
-            }
-
-            if (expanded) {
-                Spacer(modifier = Modifier.height(12.dp))
-                
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    OutlinedTextField(
-                        value = searchText,
-                        onValueChange = { searchText = it },
-                        label = { Text("Search on IGDB") },
-                        modifier = Modifier.weight(1f).padding(end = 8.dp),
-                        singleLine = true
-                    )
-                    Button(onClick = { onSearchCustom(searchText) }) {
-                        Text("Search")
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(12.dp))
-                Text("Select the correct match:", style = MaterialTheme.typography.labelMedium)
-                
-                if (unmatched.candidates.isEmpty()) {
-                    Text("No candidates found. Try refining the search above.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(vertical = 8.dp))
-                } else {
-                    unmatched.candidates.forEach { candidate ->
-                        val year = candidate.firstReleaseDate?.let { 
-                            java.time.Instant.ofEpochSecond(it).atZone(java.time.ZoneId.systemDefault()).year 
-                        }
-                        
-                        ListItem(
-                            headlineContent = { Text(candidate.name) },
-                            supportingContent = { Text(year?.toString() ?: "Unknown Year") },
-                            modifier = Modifier.clickable { 
-                                onResolve(candidate) 
-                                expanded = false
-                            }
-                        )
-                        HorizontalDivider(modifier = Modifier.padding(horizontal = 8.dp))
-                    }
-                }
-            }
-        }
-    }
 }

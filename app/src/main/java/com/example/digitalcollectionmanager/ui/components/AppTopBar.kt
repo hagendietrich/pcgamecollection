@@ -93,6 +93,13 @@ fun AppTopBar(
                         }
                     )
                     DropdownMenuItem(
+                        text = { Text(stringResource(R.string.menu_sync)) },
+                        onClick = {
+                            showMenu = false
+                            onNavigate(Screen.Sync.route)
+                        }
+                    )
+                    DropdownMenuItem(
                         text = { Text(stringResource(R.string.menu_import)) },
                         onClick = {
                             showMenu = false

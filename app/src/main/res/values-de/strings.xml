@@ -2,6 +2,7 @@
     <string name="app_name">Digital Collection Manager</string>
     <string name="menu_my_games">Meine Spiele</string>
     <string name="menu_add_game">Spiel hinzufügen</string>
+    <string name="menu_sync">Cloud Synchronisation</string>
     <string name="menu_import">Import/Export Spiele</string>
     <string name="import_export_title">Import/Export</string>
     <string name="menu_settings">Einstellungen (IGDB)</string>
@@ -27,6 +28,8 @@
     <string name="detail_mode_multiplayer">Multiplayer</string>
     <string name="detail_mode_coop">Co-op</string>
     <string name="detail_mode_edit">Modus bearbeiten</string>
+    <string name="sync_title">Cloud Synchronisation</string>
+    <string name="sync_all">Alle Konten synchronisieren</string>
     <string name="rating_users">Nutzer:</string>
     <string name="rating_critics">Kritiker:</string>
     <string name="setup_welcome">Willkommen zum Manager deiner Spielesammlung</string>

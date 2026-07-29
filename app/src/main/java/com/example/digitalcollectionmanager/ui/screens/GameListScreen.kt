@@ -481,7 +481,10 @@ fun FilterSelectionDialog(
                             .clickable { onToggle(option) }
                             .padding(vertical = 4.dp)
                     ) {
-                        IconButton(onClick = { onToggle(option) }) {
+                        Box(
+                            modifier = Modifier.size(48.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
                             when (type) {
                                 com.example.digitalcollectionmanager.data.model.FilterType.NONE -> Icon(Icons.Default.CheckBoxOutlineBlank, contentDescription = null)
                                 com.example.digitalcollectionmanager.data.model.FilterType.INCLUDE -> Icon(Icons.Default.AddCircle, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
@@ -968,9 +971,12 @@ fun EditModeDialog(
                 options.forEach { mode ->
                     Row(
                         verticalAlignment = Alignment.CenterVertically, 
-                        modifier = Modifier.fillMaxWidth().clickable { 
-                            if (selectedModes.contains(mode)) selectedModes.remove(mode) else selectedModes.add(mode)
-                        }
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { 
+                                if (selectedModes.contains(mode)) selectedModes.remove(mode) else selectedModes.add(mode)
+                            }
+                            .padding(vertical = 4.dp)
                     ) {
                         Checkbox(
                             checked = selectedModes.contains(mode), 
@@ -978,7 +984,7 @@ fun EditModeDialog(
                                 if (it) selectedModes.add(mode) else selectedModes.remove(mode)
                             }
                         )
-                        Text(mode)
+                        Text(mode, modifier = Modifier.padding(start = 8.dp))
                     }
                 }
             }
