@@ -142,36 +142,11 @@ Vertical grid of game covers:
 
 ---
 
-## 11. What Is Explicitly *Not* in Scope (Step 1)
-- Multi-platform imports (beyond public profile parsing) — Step 3+.
-- Advanced cloud sync (deferred until after basic portability is solid).
+## 11. Ideas for future features
+- Advanced cloud sync (steam, gog, ea, ubisoft, battle.net)
 
 ---
 
-## 12. Project Plan Update Log (post-inspection)
-
-The following were discovered during file inspection and fixed directly:
-
-### ✅ Already Complete (previously inaccurate plan status)
-- **IGDB deps in libs.versions.toml**: Added `ktor`, `serializationJson`, `datastore`, `ksp`, and `lifecycle-viewmodel-compose` versions.
-- **Gradle Plugins**: Applied `kotlin-serialization` and `ksp` for Room and API support.
-- **Ktor & DataStore additions to build.gradle.kts**: Added necessary dependencies for API and secure storage.
-- **IGDB API layer**: Created `IgdbModels.kt`, `IgdbClient.kt`, and `SettingsRepository.kt`.
-- **First-run Setup**: Created `SetupViewModel` and `SetupScreen`.
-- **Repository**: Created `GameRepository.kt` and `GameSource.kt`.
-- **Add Game UI**: Created `AddGameViewModel.kt` and `AddGameScreen.kt`.
-- **Library UI**: Created `GameListViewModel.kt` and `GameListScreen.kt` with adjustable grid density.
-
-### ✅ Fixed (were missing, now remediated)
-- `src/main/AndroidManifest.xml` — added `<uses-permission android:name="android.permission.INTERNET" />`. Plan listed this as a checklist item; it was absent and needed for IGDB HTTP calls.
-- `res/values/strings.xml` — created minimal file with `app_name` string resource referenced in manifest (`@string/app_name`).
-- `build.gradle.kts` compileSdk DSL → replaced invalid nested braces syntax (`compileSdk { version = release(36) ... }`) with standard `compileSdk = 34`.
-- Note: Coil is declared as `2.7.0` (Coil 2 / `io.coil-kt:coil-compose`), **not** `5.0.0` as the plan stated — the two major versions are different artifacts and coil-compose version ≥6 would be incompatible with this AGP/kotlin setup.
-
-### 📋 Pending (now re-scheduled)
-| Item | Plan Step# | Priority |
-|---|---|---|
-| Manually added via search from online Games Database | Step 1 | Med |
-| CSV/JSON Import | Step 10 | Low |
-
----
+## 12. Project Plan Features Realized (post-inspection)
+- New game characteristic "Mode". Valid values: Singeplayer, Multiplayer, Co-op 
+- Filtering (visualized by a funnel in the top bar), based on labels, genres, mode

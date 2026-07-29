@@ -4,10 +4,13 @@ import android.content.Context
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.example.digitalcollectionmanager.data.model.GroupingType
+import com.example.digitalcollectionmanager.data.model.LibraryFilters
 import com.example.digitalcollectionmanager.data.model.SortOrder
 import com.example.digitalcollectionmanager.dataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 
 class SettingsRepository(private val context: Context) {
 
@@ -20,6 +23,7 @@ class SettingsRepository(private val context: Context) {
         val COLUMN_COUNT = androidx.datastore.preferences.core.intPreferencesKey("column_count")
         val SORT_ORDER = stringPreferencesKey("sort_order")
         val GROUPING_TYPE = stringPreferencesKey("grouping_type") // "NONE", "STATUS", "LABEL", "PLATFORM", "GENRE"
+        val LIBRARY_FILTERS = stringPreferencesKey("library_filters")
     }
 
     val columnCount: Flow<Int> = context.dataStore.data.map { preferences ->
@@ -59,6 +63,21 @@ class SettingsRepository(private val context: Context) {
     suspend fun updateGroupingType(type: GroupingType) {
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.GROUPING_TYPE] = type.name
+        }
+    }
+
+    val libraryFilters: Flow<LibraryFilters> = context.dataStore.data.map { preferences ->
+        val jsonStr = preferences[PreferencesKeys.LIBRARY_FILTERS] ?: return@map LibraryFilters()
+        try {
+            Json.decodeFromString<LibraryFilters>(jsonStr)
+        } catch (e: Exception) {
+            LibraryFilters()
+        }
+    }
+
+    suspend fun updateFilters(filters: LibraryFilters) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.LIBRARY_FILTERS] = Json.encodeToString(filters)
         }
     }
 

@@ -210,6 +210,7 @@ class GameRepository(
                     publishers = igdbGame.involvedCompanies?.filter { it.publisher }?.mapNotNull { it.company?.name } ?: emptyList(),
                     themes = igdbGame.themes?.map { it.name } ?: emptyList(),
                     keywords = igdbGame.keywords?.map { it.name } ?: emptyList(),
+                    gameModes = mapIgdbGameModes(igdbGame.gameModes),
                     storeUrls = extractStoreUrls(igdbGame, mapOf("STEAM" to steamAppId)).toMutableMap().apply {
                         if (!containsKey("Steam")) put("Steam", "https://store.steampowered.com/app/$steamAppId")
                     }
@@ -369,6 +370,7 @@ class GameRepository(
                     publishers = igdbGame.involvedCompanies?.filter { it.publisher }?.mapNotNull { it.company?.name } ?: emptyList(),
                     themes = igdbGame.themes?.map { it.name } ?: emptyList(),
                     keywords = igdbGame.keywords?.map { it.name } ?: emptyList(),
+                    gameModes = mapIgdbGameModes(igdbGame.gameModes),
                     storeUrls = extractStoreUrls(igdbGame, mapOf("GOG" to gogSourceId))
                 )
                 gameDao.insertGame(game)
@@ -482,6 +484,7 @@ class GameRepository(
                     publishers = igdbGame.involvedCompanies?.filter { it.publisher }?.mapNotNull { it.company?.name } ?: emptyList(),
                     themes = igdbGame.themes?.map { it.name } ?: emptyList(),
                     keywords = igdbGame.keywords?.map { it.name } ?: emptyList(),
+                    gameModes = mapIgdbGameModes(igdbGame.gameModes),
                     storeUrls = extractStoreUrls(igdbGame, emptyMap())
                 )
                 gameDao.insertGame(game)
@@ -547,6 +550,7 @@ class GameRepository(
                 publishers = igdbGame.involvedCompanies?.filter { it.publisher }?.mapNotNull { it.company?.name } ?: emptyList(),
                 themes = igdbGame.themes?.map { it.name } ?: emptyList(),
                 keywords = igdbGame.keywords?.map { it.name } ?: emptyList(),
+                gameModes = mapIgdbGameModes(igdbGame.gameModes),
                 storeUrls = extractStoreUrls(igdbGame, mapOf(sourceKey to unmatchedGame.storeId))
             )
             gameDao.insertGame(game)
@@ -650,6 +654,7 @@ class GameRepository(
             publishers = igdbGame.involvedCompanies?.filter { it.publisher }?.mapNotNull { it.company?.name } ?: emptyList(),
             themes = igdbGame.themes?.map { it.name } ?: emptyList(),
             keywords = igdbGame.keywords?.map { it.name } ?: emptyList(),
+            gameModes = mapIgdbGameModes(igdbGame.gameModes),
             storeUrls = extractStoreUrls(igdbGame, existingGame.sourceIds)
             // Keep: id, platforms, isOwned, sourceIds, playtimes, playtimeMinutes, labels, completionStatus
         )
@@ -780,11 +785,12 @@ class GameRepository(
         val existing = gameDao.getGameById(gameId) ?: return@withContext
         val igdbId = existing.igdbId ?: return@withContext
 
-        // Refresh if missing summary OR screenshots OR companies OR store links
+        // Refresh if missing summary OR screenshots OR companies OR store links OR game modes
         val needsRefresh = existing.summary.isNullOrBlank() || 
                            existing.screenshotUrls.isEmpty() || 
                            existing.developers.isEmpty() ||
-                           existing.storeUrls.isEmpty()
+                           existing.storeUrls.isEmpty() ||
+                           existing.gameModes.isEmpty()
 
         if (!needsRefresh) return@withContext
 
@@ -815,11 +821,37 @@ class GameRepository(
             publishers = igdbGame.involvedCompanies?.filter { it.publisher }?.mapNotNull { it.company?.name } ?: emptyList(),
             themes = igdbGame.themes?.map { it.name } ?: emptyList(),
             keywords = igdbGame.keywords?.map { it.name } ?: emptyList(),
+            gameModes = mapIgdbGameModes(igdbGame.gameModes),
             storeUrls = extractStoreUrls(igdbGame, existing.sourceIds)
         )
         
         gameDao.updateGame(updatedGame)
         println("Enrichment Complete for: ${existing.title}")
+    }
+
+    fun mapIgdbGameModes(igdbModes: List<IgdbGameMode>?): List<String> {
+        if (igdbModes == null) return emptyList()
+        val result = mutableSetOf<String>()
+        igdbModes.forEach { mode ->
+            val name = mode.name.lowercase()
+            when {
+                name.contains("single") -> result.add("Singleplayer")
+                name.contains("multiplayer") || name.contains("mmo") -> result.add("Multiplayer")
+                name.contains("co-op") || name.contains("cooperative") -> result.add("Co-op")
+            }
+        }
+        return sortGameModes(result.toList())
+    }
+
+    /**
+     * Sorts game modes in the canonical order: Singleplayer, Multiplayer, Co-op.
+     */
+    fun sortGameModes(modes: List<String>): List<String> {
+        val order = listOf("Singleplayer", "Multiplayer", "Co-op")
+        return modes.sortedBy { mode ->
+            val index = order.indexOf(mode)
+            if (index != -1) index else 99
+        }
     }
 
     /**

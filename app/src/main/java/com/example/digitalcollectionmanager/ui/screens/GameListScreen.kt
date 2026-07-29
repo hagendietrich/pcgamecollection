@@ -58,6 +58,9 @@ fun GameListScreen(
     val isMultiSelectMode by viewModel.isMultiSelectMode.collectAsState()
     val reMatchResults by viewModel.reMatchResults.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
+    val libraryFilters by viewModel.libraryFilters.collectAsState()
+    val allLabels by viewModel.allLabels.collectAsState()
+    val allGenres by viewModel.allGenres.collectAsState()
     
     var selectedGame by remember { mutableStateOf<Game?>(null) }
     
@@ -75,6 +78,8 @@ fun GameListScreen(
     var showBottomSheet by remember { mutableStateOf(false) }
     var showSortMenu by remember { mutableStateOf(false) }
     var showGroupingMenu by remember { mutableStateOf(false) }
+    var showFilterMenu by remember { mutableStateOf(false) }
+    var filterCategoryToEdit by remember { mutableStateOf<String?>(null) }
     var showReMatchDialog by remember { mutableStateOf(false) }
 
     // State to track collapsed groups
@@ -144,6 +149,68 @@ fun GameListScreen(
                                         false
                                     }
                                 )
+                            }
+                        }
+
+                        // Filter Button
+                        Box(modifier = Modifier.wrapContentSize(Alignment.TopEnd)) {
+                            IconButton(onClick = { showFilterMenu = true }) {
+                                Icon(Icons.Default.FilterList, contentDescription = "Filter")
+                            }
+                            DropdownMenu(
+                                expanded = showFilterMenu,
+                                onDismissRequest = { showFilterMenu = false }
+                            ) {
+                                val categories = listOf("Mode", "Platform", "Status", "Labels", "Genre")
+                                categories.forEach { category ->
+                                    val isActive = libraryFilters.isCategoryActive(category)
+                                    DropdownMenuItem(
+                                        text = {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                modifier = Modifier.fillMaxWidth()
+                                            ) {
+                                                Box(
+                                                    modifier = Modifier.size(32.dp),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    if (isActive) {
+                                                        IconButton(
+                                                            onClick = { 
+                                                                viewModel.clearCategoryFilter(category)
+                                                            }
+                                                        ) {
+                                                            Icon(
+                                                                Icons.Default.Check,
+                                                                contentDescription = "Clear",
+                                                                modifier = Modifier.size(18.dp),
+                                                                tint = MaterialTheme.colorScheme.primary
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                                Text(
+                                                    text = category,
+                                                    modifier = Modifier.padding(start = 8.dp)
+                                                )
+                                            }
+                                        },
+                                        onClick = {
+                                            filterCategoryToEdit = category
+                                            showFilterMenu = false
+                                        }
+                                    )
+                                }
+                                if (libraryFilters.hasAnyActiveFilters()) {
+                                    HorizontalDivider()
+                                    DropdownMenuItem(
+                                        text = { Text("Clear All Filters", color = MaterialTheme.colorScheme.error) },
+                                        onClick = {
+                                            viewModel.clearAllFilters()
+                                            showFilterMenu = false
+                                        }
+                                    )
+                                }
                             }
                         }
 
@@ -363,6 +430,73 @@ fun GameListScreen(
             }
         )
     }
+
+    if (filterCategoryToEdit != null) {
+        val category = filterCategoryToEdit!!
+        val options = when (category) {
+            "Mode" -> listOf("Singleplayer", "Multiplayer", "Co-op")
+            "Platform" -> allGames.flatMap { it.platforms }.distinct().sorted()
+            "Status" -> CompletionStatus.entries.map { it.name }
+            "Labels" -> allLabels
+            "Genre" -> allGenres
+            else -> emptyList()
+        }
+
+        FilterSelectionDialog(
+            categoryName = category,
+            options = options,
+            currentFilters = when (category) {
+                "Mode" -> libraryFilters.modes
+                "Platform" -> libraryFilters.platforms
+                "Status" -> libraryFilters.statuses
+                "Labels" -> libraryFilters.labels
+                "Genre" -> libraryFilters.genres
+                else -> emptyMap()
+            },
+            onToggle = { item -> viewModel.toggleFilter(category, item) },
+            onDismiss = { filterCategoryToEdit = null }
+        )
+    }
+}
+
+@Composable
+fun FilterSelectionDialog(
+    categoryName: String,
+    options: List<String>,
+    currentFilters: Map<String, com.example.digitalcollectionmanager.data.model.FilterType>,
+    onToggle: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Filter by $categoryName") },
+        text = {
+            LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 400.dp)) {
+                items(options) { option ->
+                    val type = currentFilters[option] ?: com.example.digitalcollectionmanager.data.model.FilterType.NONE
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onToggle(option) }
+                            .padding(vertical = 4.dp)
+                    ) {
+                        IconButton(onClick = { onToggle(option) }) {
+                            when (type) {
+                                com.example.digitalcollectionmanager.data.model.FilterType.NONE -> Icon(Icons.Default.CheckBoxOutlineBlank, contentDescription = null)
+                                com.example.digitalcollectionmanager.data.model.FilterType.INCLUDE -> Icon(Icons.Default.AddCircle, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                com.example.digitalcollectionmanager.data.model.FilterType.EXCLUDE -> Icon(Icons.Default.RemoveCircle, contentDescription = null, tint = MaterialTheme.colorScheme.error)
+                            }
+                        }
+                        Text(option, style = MaterialTheme.typography.bodyLarge)
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Done") }
+        }
+    )
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -546,6 +680,11 @@ fun GameDetailContent(
     var showAddLabelDialog by remember { mutableStateOf(false) }
     var showAddGenreDialog by remember { mutableStateOf(false) }
     var showReleaseDatePicker by remember { mutableStateOf(false) }
+    var showEditModeDialog by remember { mutableStateOf(false) }
+
+    LaunchedEffect(game.id) {
+        viewModel.enrichGame(game.id)
+    }
 
     Column(
         modifier = Modifier
@@ -635,6 +774,41 @@ fun GameDetailContent(
             val minutes = game.playtimeMinutes % 60
             TextButton(onClick = { showPlaytimePicker = true }) {
                 Text("${hours}h ${minutes}m")
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Mode
+        Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(stringResource(R.string.detail_mode), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.width(8.dp))
+                Surface(
+                    shape = MaterialTheme.shapes.small,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                    modifier = Modifier.clickable { showEditModeDialog = true }
+                ) {
+                    Text(
+                        text = " + Add ",
+                        style = MaterialTheme.typography.labelMedium,
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                    )
+                }
+            }
+            FlowRow(
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                horizontalArrangement = Arrangement.Center,
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                game.gameModes.forEach { mode ->
+                    ManageableChip(
+                        text = mode,
+                        onDelete = { 
+                            viewModel.updateGameModes(game.id, game.gameModes - mode)
+                        }
+                    )
+                }
             }
         }
 
@@ -764,6 +938,62 @@ fun GameDetailContent(
             onDismiss = { showAddGenreDialog = false }
         )
     }
+
+    if (showEditModeDialog) {
+        EditModeDialog(
+            currentModes = game.gameModes,
+            onConfirm = { 
+                viewModel.updateGameModes(game.id, it)
+                showEditModeDialog = false 
+            },
+            onDismiss = { showEditModeDialog = false }
+        )
+    }
+}
+
+@Composable
+fun EditModeDialog(
+    currentModes: List<String>,
+    onConfirm: (List<String>) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val options = listOf("Singleplayer", "Multiplayer", "Co-op")
+    val selectedModes = remember { mutableStateListOf<String>().apply { addAll(currentModes) } }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.detail_mode_edit)) },
+        text = {
+            Column {
+                options.forEach { mode ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically, 
+                        modifier = Modifier.fillMaxWidth().clickable { 
+                            if (selectedModes.contains(mode)) selectedModes.remove(mode) else selectedModes.add(mode)
+                        }
+                    ) {
+                        Checkbox(
+                            checked = selectedModes.contains(mode), 
+                            onCheckedChange = { 
+                                if (it) selectedModes.add(mode) else selectedModes.remove(mode)
+                            }
+                        )
+                        Text(mode)
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(selectedModes.toList()) }) {
+                Text("Confirm")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
 }
 
 @OptIn(ExperimentalFoundationApi::class)

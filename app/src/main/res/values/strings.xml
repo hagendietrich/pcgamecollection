@@ -22,6 +22,11 @@
     <string name="detail_platform">Platform: %1$s</string>
     <string name="detail_released">Released: %1$s</string>
     <string name="detail_genres">Genres: %1$s</string>
+    <string name="detail_mode">Mode:</string>
+    <string name="detail_mode_singleplayer">Singleplayer</string>
+    <string name="detail_mode_multiplayer">Multiplayer</string>
+    <string name="detail_mode_coop">Co-op</string>
+    <string name="detail_mode_edit">Edit Mode</string>
     <string name="rating_users">Users:</string>
     <string name="rating_critics">Critics:</string>
     <string name="setup_welcome">Welcome to Digital Collection Manager</string>

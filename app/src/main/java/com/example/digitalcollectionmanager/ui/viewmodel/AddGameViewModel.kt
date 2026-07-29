@@ -71,6 +71,7 @@ class AddGameViewModel(
                 publishers = igdbGame.involvedCompanies?.filter { it.publisher }?.mapNotNull { it.company?.name } ?: emptyList(),
                 themes = igdbGame.themes?.map { it.name } ?: emptyList(),
                 keywords = igdbGame.keywords?.map { it.name } ?: emptyList(),
+                gameModes = gameRepository.mapIgdbGameModes(igdbGame.gameModes),
                 storeUrls = gameRepository.extractStoreUrls(igdbGame, mapOf("IGDB" to igdbGame.id.toString()))
             )
             gameRepository.addGame(game)

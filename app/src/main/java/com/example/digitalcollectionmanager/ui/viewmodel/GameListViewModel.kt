@@ -2,10 +2,7 @@ package com.example.digitalcollectionmanager.ui.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.digitalcollectionmanager.data.model.CompletionStatus
-import com.example.digitalcollectionmanager.data.model.Game
-import com.example.digitalcollectionmanager.data.model.GroupingType
-import com.example.digitalcollectionmanager.data.model.SortOrder
+import com.example.digitalcollectionmanager.data.model.*
 import com.example.digitalcollectionmanager.data.api.models.IgdbGame
 import com.example.digitalcollectionmanager.data.repository.GameRepository
 import com.example.digitalcollectionmanager.data.repository.SettingsRepository
@@ -32,16 +29,35 @@ class GameListViewModel(
     val groupingType: StateFlow<GroupingType> = settingsRepository.groupingType
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), GroupingType.NONE)
 
+    val libraryFilters: StateFlow<LibraryFilters> = settingsRepository.libraryFilters
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), LibraryFilters())
+
     val groupedGames: StateFlow<Map<String, List<Game>>> = combine(
         gameRepository.getAllGames(),
         settingsRepository.sortOrder,
         settingsRepository.groupingType,
+        settingsRepository.libraryFilters,
         _searchQuery
-    ) { games, sortOrder, groupingType, query ->
-        val filtered = if (query.isBlank()) {
+    ) { games, sortOrder, groupingType, filters, query ->
+        val searched = if (query.isBlank()) {
             games
         } else {
             games.filter { it.title.contains(query, ignoreCase = true) }
+        }
+
+        val filtered = searched.filter { game ->
+            // Filter by Mode
+            if (!passesFilter(game.gameModes, filters.modes)) return@filter false
+            // Filter by Platform
+            if (!passesFilter(game.platforms, filters.platforms)) return@filter false
+            // Filter by Status (Single value)
+            if (!passesFilter(listOf(game.completionStatus.name), filters.statuses)) return@filter false
+            // Filter by Labels
+            if (!passesFilter(game.labels, filters.labels)) return@filter false
+            // Filter by Genre
+            if (!passesFilter(game.genres, filters.genres)) return@filter false
+            
+            true
         }
 
         val sorted = when (sortOrder) {
@@ -261,6 +277,94 @@ class GameListViewModel(
                     releaseDate = normalized,
                     isReleaseDateManual = true
                 ))
+            }
+        }
+    }
+
+    fun updateGameModes(gameId: Int, modes: List<String>) {
+        viewModelScope.launch {
+            val games = gameRepository.getAllGames().first()
+            games.find { it.id == gameId }?.let { game ->
+                gameRepository.updateGame(game.copy(
+                    gameModes = gameRepository.sortGameModes(modes)
+                ))
+            }
+        }
+    }
+
+    private fun passesFilter(gameItems: List<String>, filterMap: Map<String, FilterType>): Boolean {
+        if (filterMap.isEmpty()) return true
+        
+        val activeFilters = filterMap.filter { it.value != FilterType.NONE }
+        if (activeFilters.isEmpty()) return true
+
+        val includeSet = activeFilters.filter { it.value == FilterType.INCLUDE }.keys
+        val excludeSet = activeFilters.filter { it.value == FilterType.EXCLUDE }.keys
+
+        // Rule: ALWAYS exclude if ANY game item is in the exclude set
+        if (gameItems.any { it in excludeSet }) return false
+
+        // Rule: If include set is not empty, game items must match AT LEAST ONE in the include set
+        if (includeSet.isNotEmpty()) {
+            if (!gameItems.any { it in includeSet }) return false
+        }
+
+        return true
+    }
+
+    fun toggleFilter(category: String, item: String) {
+        viewModelScope.launch {
+            val current = libraryFilters.value
+            val newFilters = when (category) {
+                "Mode" -> current.copy(modes = cycleFilter(current.modes, item))
+                "Platform" -> current.copy(platforms = cycleFilter(current.platforms, item))
+                "Status" -> current.copy(statuses = cycleFilter(current.statuses, item))
+                "Labels" -> current.copy(labels = cycleFilter(current.labels, item))
+                "Genre" -> current.copy(genres = cycleFilter(current.genres, item))
+                else -> current
+            }
+            settingsRepository.updateFilters(newFilters)
+        }
+    }
+
+    private fun cycleFilter(map: Map<String, FilterType>, item: String): Map<String, FilterType> {
+        val next = when (map[item] ?: FilterType.NONE) {
+            FilterType.NONE -> FilterType.INCLUDE
+            FilterType.INCLUDE -> FilterType.EXCLUDE
+            FilterType.EXCLUDE -> FilterType.NONE
+        }
+        val mutable = map.toMutableMap()
+        if (next == FilterType.NONE) mutable.remove(item) else mutable[item] = next
+        return mutable
+    }
+
+    fun clearAllFilters() {
+        viewModelScope.launch {
+            settingsRepository.updateFilters(LibraryFilters())
+        }
+    }
+
+    fun clearCategoryFilter(category: String) {
+        viewModelScope.launch {
+            val current = libraryFilters.value
+            val newFilters = when (category) {
+                "Mode" -> current.copy(modes = emptyMap())
+                "Platform" -> current.copy(platforms = emptyMap())
+                "Status" -> current.copy(statuses = emptyMap())
+                "Labels" -> current.copy(labels = emptyMap())
+                "Genre" -> current.copy(genres = emptyMap())
+                else -> current
+            }
+            settingsRepository.updateFilters(newFilters)
+        }
+    }
+
+    fun enrichGame(gameId: Int) {
+        viewModelScope.launch {
+            try {
+                gameRepository.refreshGameMetadata(gameId)
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
         }
     }

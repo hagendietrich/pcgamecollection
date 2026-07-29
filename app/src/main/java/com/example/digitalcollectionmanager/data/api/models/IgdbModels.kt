@@ -25,7 +25,14 @@ data class IgdbGame(
     @SerialName("involved_companies") val involvedCompanies: List<IgdbInvolvedCompany>? = null,
     val themes: List<IgdbTheme>? = null,
     val keywords: List<IgdbKeyword>? = null,
-    @SerialName("external_games") val externalGames: List<IgdbExternalGameData>? = null
+    @SerialName("external_games") val externalGames: List<IgdbExternalGameData>? = null,
+    @SerialName("game_modes") val gameModes: List<IgdbGameMode>? = null
+)
+
+@Serializable
+data class IgdbGameMode(
+    val id: Long? = null,
+    val name: String = ""
 )
 
 @Serializable

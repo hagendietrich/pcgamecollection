@@ -44,7 +44,7 @@ class IgdbClient {
             client.post("https://api.igdb.com/v4/games") {
                 header("Client-ID", clientId)
                 header("Authorization", "Bearer $token")
-                setBody("search \"$query\"; fields name, first_release_date, cover.url, genres.name, summary, screenshots.url, url, rating, aggregated_rating, involved_companies.company.name, involved_companies.developer, involved_companies.publisher, themes.name, keywords.name, external_games.url, external_games.category, external_games.uid; limit 20;")
+                setBody("search \"$query\"; fields name, first_release_date, cover.url, genres.name, summary, screenshots.url, url, rating, aggregated_rating, involved_companies.company.name, involved_companies.developer, involved_companies.publisher, themes.name, keywords.name, external_games.url, external_games.category, external_games.uid, game_modes.name; limit 20;")
             }.body()
         } catch (e: Exception) {
             println("IGDB Search Error: ${e.message}")
@@ -80,7 +80,7 @@ class IgdbClient {
             client.post("https://api.igdb.com/v4/games") {
                 header("Client-ID", clientId)
                 header("Authorization", "Bearer $token")
-                setBody("fields name, first_release_date, cover.url, genres.name, summary, screenshots.url, url, rating, aggregated_rating, involved_companies.company.name, involved_companies.developer, involved_companies.publisher, themes.name, keywords.name, external_games.url, external_games.category, external_games.uid; where id = ($idsString); limit 500;")
+                setBody("fields name, first_release_date, cover.url, genres.name, summary, screenshots.url, url, rating, aggregated_rating, involved_companies.company.name, involved_companies.developer, involved_companies.publisher, themes.name, keywords.name, external_games.url, external_games.category, external_games.uid, game_modes.name; where id = ($idsString); limit 500;")
             }.body()
         } catch (e: Exception) {
             println("IGDB GetByIds Error: ${e.message}")

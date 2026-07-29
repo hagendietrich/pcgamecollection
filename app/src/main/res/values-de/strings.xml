@@ -22,6 +22,11 @@
     <string name="detail_platform">Plattform: %1$s</string>
     <string name="detail_released">Veröffentlicht: %1$s</string>
     <string name="detail_genres">Genres: %1$s</string>
+    <string name="detail_mode">Modus:</string>
+    <string name="detail_mode_singleplayer">Singleplayer</string>
+    <string name="detail_mode_multiplayer">Multiplayer</string>
+    <string name="detail_mode_coop">Co-op</string>
+    <string name="detail_mode_edit">Modus bearbeiten</string>
     <string name="rating_users">Nutzer:</string>
     <string name="rating_critics">Kritiker:</string>
     <string name="setup_welcome">Willkommen zum Manager deiner Spielesammlung</string>
