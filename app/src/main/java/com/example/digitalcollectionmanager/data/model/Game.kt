@@ -24,6 +24,7 @@ data class Game(
     val isReleaseDateManual: Boolean = false,
     val isGenreManual: Boolean = false,
     val isGameModeManual: Boolean = false,
+    val isCoverManual: Boolean = false,
     val summary: String? = null,
     val screenshotUrls: List<String> = emptyList(),
     val igdbUrl: String? = null,

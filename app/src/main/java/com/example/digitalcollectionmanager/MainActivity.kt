@@ -28,14 +28,12 @@ class MainActivity : ComponentActivity() {
         val igdbClient = IgdbClient()
         val steamClient = SteamClient()
         val gogClient = GogClient()
-        val eaClient = EaClient()
         
         val gameRepository = GameRepository(
             (application as App).database.gameDao(),
             igdbClient,
             steamClient,
             gogClient,
-            eaClient,
             settingsRepository
         )
 

@@ -26,6 +26,7 @@ fun AppTopBar(
     isSearchActive: Boolean = false,
     searchQuery: String = "",
     onSearchQueryChange: (String) -> Unit = {},
+    placeholderText: String = "Search...",
     showSearchToggle: Boolean = true,
     onToggleSearch: (Boolean) -> Unit = {},
     actions: @Composable RowScope.() -> Unit = {}
@@ -38,8 +39,14 @@ fun AppTopBar(
                 TextField(
                     value = searchQuery,
                     onValueChange = onSearchQueryChange,
-                    placeholder = { Text("Search...") },
+                    placeholder = { 
+                        Text(
+                            text = placeholderText,
+                            style = MaterialTheme.typography.bodyMedium
+                        ) 
+                    },
                     modifier = Modifier.fillMaxWidth(),
+                    textStyle = MaterialTheme.typography.bodyMedium,
                     singleLine = true,
                     colors = TextFieldDefaults.colors(
                         focusedContainerColor = Color.Transparent,

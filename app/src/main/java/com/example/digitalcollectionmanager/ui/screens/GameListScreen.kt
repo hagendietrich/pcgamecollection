@@ -97,12 +97,14 @@ fun GameListScreen(
                     viewModel = viewModel
                 )
             } else {
+                val displayedCount = groupedGames.values.flatten().distinctBy { it.id }.size
                 AppTopBar(
                     title = stringResource(R.string.library_title),
                     onNavigate = onNavigate,
                     isSearchActive = true,
                     searchQuery = searchQuery,
                     onSearchQueryChange = { viewModel.updateSearchQuery(it) },
+                    placeholderText = "Search $displayedCount...",
                     showSearchToggle = false,
                     actions = {
                         // Grouping Button
@@ -415,9 +417,11 @@ fun GameListScreen(
     }
 
     if (showReMatchDialog && selectedGame != null) {
+        val isSearching by viewModel.isSearchingReMatch.collectAsState()
         ReMatchDialog(
             initialTitle = selectedGame!!.title,
             candidates = reMatchResults,
+            isSearching = isSearching,
             onSearch = { viewModel.searchForReMatch(it) },
             onSelect = { candidate ->
                 viewModel.applyReMatch(selectedGame!!.id, candidate)
@@ -812,10 +816,9 @@ fun GameDetailContent(
     var showAddPlatformDialog by remember { mutableStateOf(false) }
     var showReleaseDatePicker by remember { mutableStateOf(false) }
     var showEditModeDialog by remember { mutableStateOf(false) }
+    var showAlternativeCoversDialog by remember { mutableStateOf(false) }
 
-    LaunchedEffect(game.id) {
-        viewModel.enrichGame(game.id)
-    }
+    val isSearchingReMatch by viewModel.isSearchingReMatch.collectAsState()
 
     Column(
         modifier = Modifier
@@ -832,25 +835,53 @@ fun GameDetailContent(
                 modifier = Modifier.align(Alignment.Center).padding(horizontal = 48.dp),
                 textAlign = TextAlign.Center
             )
-            IconButton(
-                onClick = onReMatchClick,
-                modifier = Modifier.align(Alignment.TopEnd)
-            ) {
-                Icon(Icons.Default.Refresh, contentDescription = "Re-match IGDB Metadata")
+            if (isSearchingReMatch) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(24.dp).align(Alignment.TopEnd).padding(4.dp),
+                    strokeWidth = 2.dp
+                )
+            } else {
+                IconButton(
+                    onClick = onReMatchClick,
+                    modifier = Modifier.align(Alignment.TopEnd)
+                ) {
+                    Icon(Icons.Default.Refresh, contentDescription = "Re-match IGDB Metadata")
+                }
             }
         }
 
         Spacer(modifier = Modifier.height(16.dp))
         
-        AsyncImage(
-            model = game.coverImageUrl,
-            contentDescription = null,
-            modifier = Modifier
-                .height(240.dp)
-                .aspectRatio(0.75f)
-                .clickable { onShowFullDetails(game.id) },
-            contentScale = ContentScale.Crop
-        )
+        Box(modifier = Modifier.fillMaxWidth()) {
+            AsyncImage(
+                model = game.coverImageUrl,
+                contentDescription = null,
+                modifier = Modifier
+                    .height(240.dp)
+                    .aspectRatio(0.75f)
+                    .clickable { onShowFullDetails(game.id) }
+                    .align(Alignment.Center),
+                contentScale = ContentScale.Crop
+            )
+
+            val isFetchingCovers by viewModel.isFetchingCovers.collectAsState()
+            if (isFetchingCovers) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(24.dp).align(Alignment.TopEnd).padding(4.dp),
+                    strokeWidth = 2.dp
+                )
+            } else {
+                IconButton(
+                    onClick = { 
+                        viewModel.fetchAlternativeCovers(game.id)
+                        showAlternativeCoversDialog = true 
+                    },
+                    modifier = Modifier.align(Alignment.TopEnd)
+                ) {
+                    Icon(Icons.Default.Edit, contentDescription = "Change Cover")
+                }
+            }
+        }
         
         Spacer(modifier = Modifier.height(16.dp))
 
@@ -1122,6 +1153,76 @@ fun GameDetailContent(
             onDismiss = { showEditModeDialog = false }
         )
     }
+
+    if (showAlternativeCoversDialog) {
+        val alternativeCovers by viewModel.alternativeCovers.collectAsState()
+        val isFetching by viewModel.isFetchingCovers.collectAsState()
+
+        AlternativeCoversDialog(
+            covers = alternativeCovers,
+            isFetching = isFetching,
+            onSelect = { 
+                viewModel.updateGameCover(game.id, it)
+                showAlternativeCoversDialog = false 
+            },
+            onDismiss = { 
+                viewModel.clearAlternativeCovers()
+                showAlternativeCoversDialog = false 
+            }
+        )
+    }
+}
+
+@Composable
+fun AlternativeCoversDialog(
+    covers: List<String>,
+    isFetching: Boolean,
+    onSelect: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Select Alternative Cover") },
+        text = {
+            Box(modifier = Modifier.fillMaxWidth().heightIn(min = 200.dp, max = 500.dp)) {
+                if (isFetching) {
+                    CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+                } else if (covers.isEmpty()) {
+                    Text("No alternative covers found.", modifier = Modifier.align(Alignment.Center))
+                } else {
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(2),
+                        contentPadding = PaddingValues(8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(covers) { coverUrl ->
+                            Card(
+                                modifier = Modifier
+                                    .aspectRatio(0.75f)
+                                    .clickable { onSelect(coverUrl) },
+                                shape = MaterialTheme.shapes.extraSmall,
+                                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                            ) {
+                                AsyncImage(
+                                    model = coverUrl,
+                                    contentDescription = null,
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = ContentScale.Crop
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
 }
 
 @Composable
@@ -1383,6 +1484,7 @@ fun SetReleaseDateDialog(
 fun ReMatchDialog(
     initialTitle: String,
     candidates: List<IgdbGame>,
+    isSearching: Boolean,
     onSearch: (String) -> Unit,
     onSelect: (IgdbGame) -> Unit,
     onDismiss: () -> Unit
@@ -1402,15 +1504,21 @@ fun ReMatchDialog(
                         modifier = Modifier.weight(1f),
                         singleLine = true
                     )
-                    IconButton(onClick = { onSearch(searchText) }) {
+                    IconButton(onClick = { onSearch(searchText) }, enabled = !isSearching) {
                         Icon(Icons.Default.Search, contentDescription = "Search")
                     }
                 }
                 
                 Spacer(modifier = Modifier.height(16.dp))
                 
-                if (candidates.isEmpty()) {
-                    Text("No results. Try refining your search.", style = MaterialTheme.typography.bodySmall)
+                if (isSearching) {
+                    Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator()
+                    }
+                } else if (candidates.isEmpty()) {
+                    Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                        Text("No results. Try refining your search.", style = MaterialTheme.typography.bodySmall)
+                    }
                 } else {
                     LazyColumn(modifier = Modifier.weight(1f)) {
                         items(candidates) { candidate ->

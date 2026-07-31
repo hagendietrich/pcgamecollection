@@ -134,13 +134,27 @@ class GameListViewModel(
         .map { games -> games.flatMap { it.platforms }.distinct().sorted() }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    private val _alternativeCovers = MutableStateFlow<List<String>>(emptyList())
+    val alternativeCovers: StateFlow<List<String>> = _alternativeCovers.asStateFlow()
+
+    private val _isFetchingCovers = MutableStateFlow(false)
+    val isFetchingCovers: StateFlow<Boolean> = _isFetchingCovers.asStateFlow()
+
+    private val _isSearchingReMatch = MutableStateFlow(false)
+    val isSearchingReMatch: StateFlow<Boolean> = _isSearchingReMatch.asStateFlow()
+
     private val _reMatchResults = MutableStateFlow<List<IgdbGame>>(emptyList())
     val reMatchResults: StateFlow<List<IgdbGame>> = _reMatchResults.asStateFlow()
 
     fun searchForReMatch(query: String) {
         if (query.isBlank()) return
         viewModelScope.launch {
-            _reMatchResults.value = gameRepository.searchGames(query)
+            _isSearchingReMatch.value = true
+            try {
+                _reMatchResults.value = gameRepository.searchGames(query)
+            } finally {
+                _isSearchingReMatch.value = false
+            }
         }
     }
 
@@ -153,6 +167,36 @@ class GameListViewModel(
 
     fun clearReMatchResults() {
         _reMatchResults.value = emptyList()
+    }
+
+    fun fetchAlternativeCovers(gameId: Int) {
+        viewModelScope.launch {
+            _isFetchingCovers.value = true
+            try {
+                _alternativeCovers.value = gameRepository.fetchAlternativeCovers(gameId)
+            } catch (e: Exception) {
+                e.printStackTrace()
+                _alternativeCovers.value = emptyList()
+            } finally {
+                _isFetchingCovers.value = false
+            }
+        }
+    }
+
+    fun clearAlternativeCovers() {
+        _alternativeCovers.value = emptyList()
+    }
+
+    fun updateGameCover(gameId: Int, imageUrl: String) {
+        viewModelScope.launch {
+            val games = gameRepository.getAllGames().first()
+            games.find { it.id == gameId }?.let { game ->
+                gameRepository.updateGame(game.copy(
+                    coverImageUrl = imageUrl,
+                    isCoverManual = true
+                ))
+            }
+        }
     }
 
     fun updateSearchQuery(query: String) {
