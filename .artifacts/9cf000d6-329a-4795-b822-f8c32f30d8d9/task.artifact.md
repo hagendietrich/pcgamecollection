@@ -1,0 +1,5 @@
+- [x] Refactor `MultiSelectTopBar` in `GameListScreen.kt`
+    - [x] Wrap `TopAppBar` in `Surface` and `Column`
+    - [x] Move management buttons to a second horizontally scrollable `Row`
+    - [x] Update labels and styling as requested
+- [x] Verify changes manually (conceptually) and ensure no regressions in functionality

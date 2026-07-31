@@ -66,6 +66,8 @@ class GameListViewModel(
             SortOrder.RELEASE_DATE_DESC -> filtered.sortedByDescending { gameRepository.normalizeDate(it.releaseDate) ?: "" }
             SortOrder.PLAYTIME_ASC -> filtered.sortedBy { it.playtimeMinutes }
             SortOrder.PLAYTIME_DESC -> filtered.sortedByDescending { it.playtimeMinutes }
+            SortOrder.DATE_ADDED_ASC -> filtered.sortedBy { it.dateAdded }
+            SortOrder.DATE_ADDED_DESC -> filtered.sortedByDescending { it.dateAdded }
         }
 
         when (groupingType) {
@@ -231,6 +233,15 @@ class GameListViewModel(
 
     fun clearSelection() {
         _selectedGameIds.value = emptySet()
+    }
+
+    fun deleteSelectedGames() {
+        viewModelScope.launch {
+            val selectedIds = _selectedGameIds.value
+            val games = gameRepository.getAllGames().first().filter { it.id in selectedIds }
+            games.forEach { gameRepository.deleteGame(it) }
+            clearSelection()
+        }
     }
 
     fun updateSelectedStatus(status: CompletionStatus) {

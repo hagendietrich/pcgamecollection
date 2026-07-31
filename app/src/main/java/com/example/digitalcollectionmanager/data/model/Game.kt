@@ -35,5 +35,6 @@ data class Game(
     val themes: List<String> = emptyList(),
     val keywords: List<String> = emptyList(),
     val gameModes: List<String> = emptyList(),
-    val storeUrls: Map<String, String> = emptyMap()
+    val storeUrls: Map<String, String> = emptyMap(),
+    val dateAdded: Long = System.currentTimeMillis() // Timestamp when the game was added to the database
 )

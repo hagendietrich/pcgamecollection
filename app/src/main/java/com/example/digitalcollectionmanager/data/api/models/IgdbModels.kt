@@ -14,6 +14,7 @@ data class IgdbTokenResponse(
 data class IgdbGame(
     val id: Long,
     val name: String,
+    val category: Int = 0,
     @SerialName("first_release_date") val firstReleaseDate: Long? = null,
     val cover: IgdbCover? = null,
     val genres: List<IgdbGenre>? = null,

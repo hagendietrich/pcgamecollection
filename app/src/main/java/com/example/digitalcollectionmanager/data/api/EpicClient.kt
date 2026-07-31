@@ -23,12 +23,12 @@ class EpicClient {
             })
         }
         defaultRequest {
-            header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36")
+            header("User-Agent", "EpicGamesLauncher/15.21.0-26466986+++Portal+Release-Live Windows/10.0.19045.1.256.64bit")
         }
     }
 
     companion object {
-        const val CLIENT_ID = "34a02cf8f4414e29b15d21ad766b651f"
+        const val CLIENT_ID = "34a02cf8f4414e29b15921876da36f9a"
         const val CLIENT_SECRET = "daafbccc737745039dffe53d94fc76cf"
         const val REDIRECT_URI = "https://www.epicgames.com/id/api/redirect"
     }
@@ -43,16 +43,22 @@ class EpicClient {
     )
 
     @Serializable
-    data class EpicLibraryResponse(
-        val records: List<EpicLibraryRecord> = emptyList(),
-        val cursor: String? = null
+    data class EpicLibraryRecord(
+        val catalogItemId: String,
+        val namespace: String? = null,
+        val appName: String? = null,
+        val sandboxName: String? = null,
+        val recordType: String? = null
     )
 
     @Serializable
-    data class EpicLibraryRecord(
+    data class EpicEntitlement(
+        val id: String,
+        val namespace: String,
         val catalogItemId: String,
-        val appName: String? = null,
-        val metadata: EpicMetadata? = null
+        val title: String? = null,
+        val entitlementType: String? = null,
+        val grantDate: String? = null
     )
 
     @Serializable
@@ -64,7 +70,7 @@ class EpicClient {
         return try {
             val auth = Base64.encodeToString("$CLIENT_ID:$CLIENT_SECRET".toByteArray(), Base64.NO_WRAP)
             val response = client.submitForm(
-                url = "https://api.epicgames.dev/epic/oauth/v2/token",
+                url = "https://account-public-service-prod03.ol.epicgames.com/account/api/oauth/token",
                 formParameters = parameters {
                     append("grant_type", "authorization_code")
                     append("code", code)
@@ -72,6 +78,7 @@ class EpicClient {
                 }
             ) {
                 header("Authorization", "Basic $auth")
+                header("X-Epic-App", "epic-launcher")
             }
 
             if (response.status == HttpStatusCode.OK) {
@@ -87,6 +94,35 @@ class EpicClient {
         }
     }
 
+    suspend fun fetchAccountId(accessToken: String): String? {
+        return try {
+            val response = client.get("https://account-public-service-prod03.ol.epicgames.com/account/api/public/account") {
+                header("Authorization", "Bearer $accessToken")
+                header("User-Agent", "EpicGamesLauncher/15.21.0-26466986+++Portal+Release-Live Windows/10.0.19045.1.256.64bit")
+            }
+
+            if (response.status == HttpStatusCode.OK) {
+                val accountResponse = response.body<EpicAccountResponse>()
+                println("Epic Sync: Fetched accountId: ${accountResponse.id}")
+                accountResponse.id
+            } else {
+                val errorBody = response.body<String>()
+                println("Epic Account ID Error: ${response.status}, Body: $errorBody")
+                null
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
+    @Serializable
+    private data class EpicAccountResponse(
+        val id: String,
+        val displayName: String? = null,
+        val email: String? = null
+    )
+
     suspend fun fetchLibraryItems(accessToken: String): List<EpicLibraryRecord> {
         val allRecords = mutableListOf<EpicLibraryRecord>()
         var cursor: String? = null
@@ -95,16 +131,23 @@ class EpicClient {
             do {
                 val response = client.get("https://library-service.live.use1a.on.epicgames.com/library/api/public/items") {
                     header("Authorization", "Bearer $accessToken")
+                    header("User-Agent", "EpicGamesLauncher/15.21.0-26466986+++Portal+Release-Live Windows/10.0.19045.1.256.64bit")
                     parameter("includeMetadata", "true")
                     if (cursor != null) parameter("cursor", cursor)
                 }
 
                 if (response.status == HttpStatusCode.OK) {
-                    val body = response.body<EpicLibraryResponse>()
-                    allRecords.addAll(body.records)
-                    cursor = body.cursor
+                    val body = response.body<String>()
+                    println("Epic API Raw Response: $body")
+                    
+                    // Parse the response manually to extract sandboxName and recordType
+                    val json = Json { ignoreUnknownKeys = true }
+                    val libraryResponse = json.decodeFromString<EpicLibraryResponse>(body)
+                    allRecords.addAll(libraryResponse.records)
+                    cursor = libraryResponse.cursor
                 } else {
-                    println("Epic Library Error: ${response.status}")
+                    val errorBody = response.body<String>()
+                    println("Epic Library Error: ${response.status}, Body: $errorBody")
                     break
                 }
             } while (cursor != null)
@@ -114,4 +157,10 @@ class EpicClient {
 
         return allRecords
     }
+
+    @Serializable
+    data class EpicLibraryResponse(
+        val records: List<EpicLibraryRecord> = emptyList(),
+        val cursor: String? = null
+    )
 }

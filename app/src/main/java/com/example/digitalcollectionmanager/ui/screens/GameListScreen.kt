@@ -4,6 +4,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -246,6 +247,20 @@ fun GameListScreen(
                                     text = { Text(stringResource(R.string.sort_by_date_asc)) },
                                     onClick = {
                                         viewModel.setSortOrder(SortOrder.RELEASE_DATE_ASC); showSortMenu =
+                                        false
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Date Added (Newest First)") },
+                                    onClick = {
+                                        viewModel.setSortOrder(SortOrder.DATE_ADDED_DESC); showSortMenu =
+                                        false
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Date Added (Oldest First)") },
+                                    onClick = {
+                                        viewModel.setSortOrder(SortOrder.DATE_ADDED_ASC); showSortMenu =
                                         false
                                     }
                                 )
@@ -569,47 +584,68 @@ fun MultiSelectTopBar(
     onRemoveLabel: (String) -> Unit,
     viewModel: GameListViewModel
 ) {
+    var showDeleteConfirmation by remember { mutableStateOf(false) }
     var showStatusMenu by remember { mutableStateOf(false) }
     var showLabelManager by remember { mutableStateOf(false) }
     var showGenreManager by remember { mutableStateOf(false) }
     var showPlatformManager by remember { mutableStateOf(false) }
     var showModeManager by remember { mutableStateOf(false) }
 
-    TopAppBar(
-        title = { Text("$selectedCount Selected") },
-        navigationIcon = {
-            IconButton(onClick = onClose) {
-                Icon(Icons.Default.Close, contentDescription = "Cancel")
-            }
-        },
-        actions = {
-            Box(modifier = Modifier.wrapContentSize(Alignment.TopEnd)) {
-                TextButton(onClick = { showStatusMenu = true }) {
-                    Text("Status")
-                }
-                DropdownMenu(expanded = showStatusMenu, onDismissRequest = { showStatusMenu = false }) {
-                    CompletionStatus.entries.forEach { status ->
-                        DropdownMenuItem(
-                            text = { Text(status.name) },
-                            onClick = { onUpdateStatus(status); showStatusMenu = false }
-                        )
+    Surface(tonalElevation = 3.dp) {
+        Column {
+            TopAppBar(
+                title = { Text("$selectedCount Selected") },
+                navigationIcon = {
+                    IconButton(onClick = onClose) {
+                        Icon(Icons.Default.Close, contentDescription = "Cancel")
+                    }
+                },
+                actions = {
+                    Button(
+                        onClick = { showDeleteConfirmation = true },
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                    ) {
+                        Text("Remove All")
                     }
                 }
-            }
-            TextButton(onClick = { showLabelManager = true }) {
-                Text("Labels")
-            }
-            TextButton(onClick = { showGenreManager = true }) {
-                Text("Genres")
-            }
-            TextButton(onClick = { showPlatformManager = true }) {
-                Text("Platforms")
-            }
-            TextButton(onClick = { showModeManager = true }) {
-                Text("Modes")
+            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(modifier = Modifier.wrapContentSize(Alignment.TopEnd)) {
+                    TextButton(onClick = { showStatusMenu = true }) {
+                        Text("Status")
+                    }
+                    DropdownMenu(
+                        expanded = showStatusMenu,
+                        onDismissRequest = { showStatusMenu = false }) {
+                        CompletionStatus.entries.forEach { status ->
+                            DropdownMenuItem(
+                                text = { Text(status.name) },
+                                onClick = { onUpdateStatus(status); showStatusMenu = false }
+                            )
+                        }
+                    }
+                }
+                TextButton(onClick = { showLabelManager = true }) {
+                    Text("Label")
+                }
+                TextButton(onClick = { showGenreManager = true }) {
+                    Text("Genre")
+                }
+                TextButton(onClick = { showPlatformManager = true }) {
+                    Text("Platform")
+                }
+                TextButton(onClick = { showModeManager = true }) {
+                    Text("Mode")
+                }
             }
         }
-    )
+    }
 
     if (showLabelManager) {
         val allLabels by viewModel.allLabels.collectAsState()
@@ -655,6 +691,30 @@ fun MultiSelectTopBar(
             viewModel = viewModel,
             onConfirm = { viewModel.updateSelectedGameModes(it) },
             onDismiss = { showModeManager = false }
+        )
+    }
+
+    if (showDeleteConfirmation) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirmation = false },
+            title = { Text("Delete Games") },
+            text = { Text("Are you sure you want to delete all $selectedCount selected games? This cannot be undone.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.deleteSelectedGames()
+                        showDeleteConfirmation = false
+                    },
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Delete")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirmation = false }) {
+                    Text("Cancel")
+                }
+            }
         )
     }
 }

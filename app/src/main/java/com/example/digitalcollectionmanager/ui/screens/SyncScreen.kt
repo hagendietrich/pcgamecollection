@@ -13,6 +13,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.example.digitalcollectionmanager.R
 import com.example.digitalcollectionmanager.ui.components.AppTopBar
+import com.example.digitalcollectionmanager.ui.components.EpicAuthDialog
 import com.example.digitalcollectionmanager.ui.components.UnmatchedGameRow
 import com.example.digitalcollectionmanager.ui.viewmodel.SyncUiState
 import com.example.digitalcollectionmanager.ui.viewmodel.SyncViewModel
@@ -26,9 +27,17 @@ fun SyncScreen(
     val uiState by viewModel.uiState.collectAsState()
     val lastSteamId by viewModel.lastSteamId.collectAsState()
     val lastGogUsername by viewModel.lastGogUsername.collectAsState()
+    val showEpicLogin by viewModel.showEpicLogin.collectAsState()
 
     var steamUrl by remember(lastSteamId) { mutableStateOf(lastSteamId) }
     var gogUsername by remember(lastGogUsername) { mutableStateOf(lastGogUsername) }
+
+    if (showEpicLogin) {
+        EpicAuthDialog(
+            onCodeCaptured = { code -> viewModel.onEpicCodeCaptured(code) },
+            onDismiss = { viewModel.setShowEpicLogin(false) }
+        )
+    }
 
     Scaffold(
         topBar = {
@@ -192,6 +201,26 @@ fun SyncScreen(
                                 enabled = uiState !is SyncUiState.Loading
                             ) {
                                 Text("Sync GOG")
+                            }
+                        }
+                    }
+                }
+
+                item {
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text("Epic Games Sync", style = MaterialTheme.typography.titleMedium)
+                            Text(
+                                "Connect your Epic Games account to sync your library. A secure login window will open.",
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier.padding(vertical = 8.dp)
+                            )
+                            Button(
+                                onClick = { viewModel.setShowEpicLogin(true) },
+                                modifier = Modifier.align(Alignment.End),
+                                enabled = uiState !is SyncUiState.Loading
+                            ) {
+                                Text("Connect Epic Account")
                             }
                         }
                     }

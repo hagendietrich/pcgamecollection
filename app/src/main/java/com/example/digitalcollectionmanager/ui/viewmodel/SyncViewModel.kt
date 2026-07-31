@@ -29,6 +29,9 @@ class SyncViewModel(
     private val _lastGogUsername = MutableStateFlow("")
     val lastGogUsername: StateFlow<String> = _lastGogUsername.asStateFlow()
 
+    private val _showEpicLogin = MutableStateFlow(false)
+    val showEpicLogin: StateFlow<Boolean> = _showEpicLogin.asStateFlow()
+
     init {
         viewModelScope.launch {
             _lastSteamId.value = settingsRepository.lastSteamId.firstOrNull() ?: ""
@@ -88,6 +91,30 @@ class SyncViewModel(
                 }
             } catch (e: Exception) {
                 _uiState.value = SyncUiState.Error("GOG sync failed: ${e.message}")
+            }
+        }
+    }
+
+    fun setShowEpicLogin(show: Boolean) {
+        _showEpicLogin.value = show
+    }
+
+    fun onEpicCodeCaptured(code: String) {
+        _showEpicLogin.value = false
+        syncJob?.cancel()
+        syncJob = viewModelScope.launch {
+            _uiState.value = SyncUiState.Loading(0f, "Initializing Epic Games sync...")
+            try {
+                val result = gameRepository.syncEpicGames(code) { progress, message ->
+                    _uiState.value = SyncUiState.Loading(progress, message)
+                }
+                val msg = if (result.importedCount > 0)
+                    "Successfully synced ${result.importedCount} games from Epic Games Store."
+                else "Epic Games library up to date. No new games were added."
+                
+                _uiState.value = SyncUiState.Success(msg, result.unmatchedGames)
+            } catch (e: Exception) {
+                _uiState.value = SyncUiState.Error("Epic sync failed: ${e.message}")
             }
         }
     }

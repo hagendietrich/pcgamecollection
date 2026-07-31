@@ -1,5 +1,6 @@
 package com.example.digitalcollectionmanager.data.repository
 
+import com.example.digitalcollectionmanager.data.api.EpicClient
 import com.example.digitalcollectionmanager.data.api.GogClient
 import com.example.digitalcollectionmanager.data.api.IgdbClient
 import com.example.digitalcollectionmanager.data.api.SteamClient
@@ -35,8 +36,151 @@ class GameRepository(
     private val igdbClient: IgdbClient,
     private val steamClient: SteamClient,
     private val gogClient: GogClient,
+    private val epicClient: EpicClient,
     private val settingsRepository: SettingsRepository
 ) {
+
+    /**
+     * Syncs games from Epic Games Store.
+     */
+    suspend fun syncEpicGames(
+        code: String,
+        onProgress: (progress: Float, message: String) -> Unit = { _, _ -> }
+    ): SyncResult = withContext(Dispatchers.IO) {
+        onProgress(0.05f, "Exchanging Epic code...")
+        val tokenResponse = epicClient.exchangeCodeForToken(code) ?: return@withContext SyncResult(0)
+        
+        onProgress(0.2f, "Fetching Epic library...")
+        val epicRecords = epicClient.fetchLibraryItems(tokenResponse.accessToken)
+        println("Epic Sync: Fetched ${epicRecords.size} library items")
+        epicRecords.forEach { record ->
+            println("Epic Sync: Found library item - Title: '${record.sandboxName}', Namespace: '${record.namespace}', CatalogItemId: '${record.catalogItemId}'")
+        }
+        if (epicRecords.isEmpty()) return@withContext SyncResult(0)
+
+        val clientId = settingsRepository.clientId.firstOrNull() ?: return@withContext SyncResult(0)
+        val clientSecret = settingsRepository.clientSecret.firstOrNull() ?: return@withContext SyncResult(0)
+        igdbClient.authenticate(clientId, clientSecret)
+
+        val localGames = gameDao.getAllGames().first()
+        var importedCount = 0
+        val unmatchedGames = mutableListOf<UnmatchedGame>()
+
+        epicRecords.forEachIndexed { index, record ->
+            // Skip if recordType is not APPLICATION (e.g., DLCs, add-ons)
+            if (record.recordType != "APPLICATION") {
+                println("Epic Sync Filter: Skipping non-application record - Type: '${record.recordType}', CatalogItemId: '${record.catalogItemId}'")
+                return@forEachIndexed
+            }
+            
+            println("Epic Sync: Processing library item - SandboxName: '${record.sandboxName}', Namespace: '${record.namespace}'")
+
+            val title = record.sandboxName ?: ""
+            val catalogItemId = record.catalogItemId
+            
+            // Skip if sandboxName is blank or looks like an internal ID
+            if (title.isBlank() || title.matches(Regex("^[a-f0-9]{32}$"))) {
+                println("Epic Sync Filter: Skipping invalid sandboxName '$title' - CatalogItemId: '${record.catalogItemId}'")
+                return@forEachIndexed
+            }
+            
+            // Check if the game already exists with the same title AND Epic platform
+            val existingGameWithEpic = localGames.find {
+                it.title.equals(title, ignoreCase = true) && it.platforms.contains("Epic")
+            }
+            
+            if (existingGameWithEpic != null) {
+                println("Epic Sync: Game already exists with Epic platform - Title: '$title'")
+                return@forEachIndexed
+            }
+            
+            // Check for exact title match (case-insensitive)
+            val existingGameByExactTitle = localGames.find { it.title.equals(title, ignoreCase = true) }
+            
+            if (existingGameByExactTitle != null) {
+                println("Epic Sync: Game exists under another platform - Title: '$title'")
+                
+                // Add Epic to platforms and update sourceIds with catalogItemId
+                val updatedPlatforms = existingGameByExactTitle.platforms.toMutableList().apply { add("Epic") }
+                val updatedSourceIds = existingGameByExactTitle.sourceIds.toMutableMap().apply { put("EPIC", catalogItemId) }
+                
+                gameDao.updateGame(existingGameByExactTitle.copy(
+                    platforms = updatedPlatforms,
+                    sourceIds = updatedSourceIds
+                ))
+                importedCount++
+                return@forEachIndexed
+            }
+            
+            // Fallback: Fuzzy title matching (e.g., "Ghostrunner II" vs. "Ghostrunner 2")
+            val existingGameByFuzzyTitle = localGames.find { fuzzyTitleMatch(it.title, title) }
+            
+            if (existingGameByFuzzyTitle != null) {
+                println("Epic Sync: Fuzzy title match found - Title: '$title' (Existing: '${existingGameByFuzzyTitle.title}')")
+                return@forEachIndexed
+            }
+
+            val progress = 0.2f + (0.8f * (index.toFloat() / epicRecords.size))
+            if (index % 5 == 0) onProgress(progress, "Matching: ${record.sandboxName}...")
+
+            val existingGame = localGames.find { it.sourceIds["EPIC"] == record.catalogItemId }
+            if (existingGame != null) {
+                // Update existing
+                val updatedPlatforms = existingGame.platforms.toMutableList()
+                if (!updatedPlatforms.contains("Epic")) updatedPlatforms.add("Epic")
+                
+                val updatedSourceIds = existingGame.sourceIds.toMutableMap()
+                updatedSourceIds["EPIC"] = record.catalogItemId
+                
+                gameDao.updateGame(existingGame.copy(
+                    platforms = updatedPlatforms,
+                    sourceIds = updatedSourceIds
+                ))
+                importedCount++
+            } else {
+                // Search IGDB
+                val match = findBestIgdbMatch(clientId, record.sandboxName ?: "")
+                if (match != null) {
+                    val fullMatch = igdbClient.getGamesByIds(clientId, listOf(match.id)).firstOrNull() ?: match
+                    
+                val game = Game(
+                    title = fullMatch.name,
+                    platforms = listOf("Epic"),
+                    coverImageUrl = getFullCoverUrl(fullMatch.cover?.url),
+                    releaseDate = formatTimestamp(fullMatch.firstReleaseDate),
+                    igdbId = fullMatch.id,
+                    sourceIds = mapOf("EPIC" to record.catalogItemId),
+                        genres = fullMatch.genres?.map { it.name } ?: emptyList(),
+                        summary = fullMatch.summary,
+                        screenshotUrls = fullMatch.screenshots?.map { getFullScreenshotUrl(it.url) } ?: emptyList(),
+                        igdbUrl = fullMatch.url,
+                        userRating = fullMatch.rating,
+                        criticRating = fullMatch.aggregatedRating,
+                        developers = fullMatch.involvedCompanies?.filter { it.developer }?.mapNotNull { it.company?.name } ?: emptyList(),
+                        publishers = fullMatch.involvedCompanies?.filter { it.publisher }?.mapNotNull { it.company?.name } ?: emptyList(),
+                        themes = fullMatch.themes?.map { it.name } ?: emptyList(),
+                        keywords = fullMatch.keywords?.map { it.name } ?: emptyList(),
+                        gameModes = mapIgdbGameModes(fullMatch.gameModes),
+                        storeUrls = extractStoreUrls(fullMatch, mapOf("EPIC" to record.catalogItemId))
+                    )
+                    gameDao.insertGame(game)
+                    importedCount++
+                } else {
+                    val candidates = igdbClient.searchGames(clientId, cleanTitle(title))
+                    unmatchedGames.add(UnmatchedGame(
+                    storeTitle = title,
+                    storeId = record.catalogItemId,
+                        platform = "Epic",
+                        playtimeMinutes = 0,
+                        candidates = candidates.take(10)
+                    ))
+                }
+            }
+        }
+
+        onProgress(1.0f, "Epic sync complete!")
+        SyncResult(importedCount, unmatchedGames)
+    }
 
     /**
      * Searches for games on IGDB.
@@ -570,8 +714,18 @@ class GameRepository(
     }
 
     private suspend fun findBestIgdbMatch(clientId: String, rawTitle: String): IgdbGame? {
+        // Preference for main games, remakes, remasters, expanded, ports
+        val gameCategories = listOf(0, 8, 9, 10, 11)
+
+        fun List<IgdbGame>.pickBest(): IgdbGame? {
+            return this.filter { it.category in gameCategories }
+                .sortedBy { gameCategories.indexOf(it.category) }
+                .firstOrNull() ?: this.firstOrNull()
+        }
+
         // Stage 1: Exact Match (Raw)
         val stage1 = igdbClient.searchGames(clientId, rawTitle)
+        stage1.find { it.name.equals(rawTitle, ignoreCase = true) && it.category in gameCategories }?.let { return it }
         stage1.find { it.name.equals(rawTitle, ignoreCase = true) }?.let { return it }
 
         // Stage 2: Cleaned Match (Smart suffixes + symbol removal)
@@ -579,13 +733,14 @@ class GameRepository(
         val stage2 = if (cleanedTitle != rawTitle) {
             igdbClient.searchGames(clientId, cleanedTitle)
         } else stage1
-        stage2.find { cleanTitle(it.name).equals(cleanedTitle, ignoreCase = true) }?.let { return it }
+        
+        stage2.filter { cleanTitle(it.name).equals(cleanedTitle, ignoreCase = true) }.pickBest()?.let { return it }
 
         // Stage 3: Roman Numeral Swap (4 -> IV, etc.)
         val romanTitle = cleanedTitle.replace(" 4", " IV").replace(" 3", " III").replace(" 2", " II")
         if (romanTitle != cleanedTitle) {
             val stage3 = igdbClient.searchGames(clientId, romanTitle)
-            stage3.find { cleanTitle(it.name).equals(cleanTitle(romanTitle), ignoreCase = true) }?.let { return it }
+            stage3.filter { cleanTitle(it.name).equals(cleanTitle(romanTitle), ignoreCase = true) }.pickBest()?.let { return it }
         }
 
         // Stage 4: Broad Core Title Match (Before first colon/hyphen/plus)
@@ -593,19 +748,17 @@ class GameRepository(
         if (coreTitle.length > 3 && coreTitle != rawTitle && coreTitle != cleanedTitle) {
             val stage4 = igdbClient.searchGames(clientId, coreTitle)
             // Pick exact match in core search first
-            stage4.find { it.name.equals(coreTitle, ignoreCase = true) }?.let { return it }
+            stage4.find { it.name.equals(coreTitle, ignoreCase = true) && it.category in gameCategories }?.let { return it }
             // Otherwise, if any result's cleaned name contains our core title
-            stage4.find { cleanTitle(it.name).contains(cleanTitle(coreTitle), ignoreCase = true) }?.let { return it }
+            stage4.filter { cleanTitle(it.name).contains(cleanTitle(coreTitle), ignoreCase = true) }.pickBest()?.let { return it }
         }
 
         // Stage 5: Normalization Match (Last Resort: Remove ALL non-alphanumeric)
         val normalizedRaw = rawTitle.filter { it.isLetterOrDigit() }.lowercase()
-        stage2.find { it.name.filter { c -> c.isLetterOrDigit() }.lowercase() == normalizedRaw }?.let { return it }
+        stage2.filter { it.name.filter { c -> c.isLetterOrDigit() }.lowercase() == normalizedRaw }.pickBest()?.let { return it }
 
         // Stage 6: Fuzzy fallback (Accept first result if it contains the cleaned title)
-        stage2.firstOrNull()?.let { 
-            if (cleanTitle(it.name).contains(cleanedTitle, ignoreCase = true)) return it 
-        }
+        stage2.filter { cleanTitle(it.name).contains(cleanedTitle, ignoreCase = true) }.pickBest()?.let { return it }
 
         return null
     }
@@ -680,6 +833,10 @@ class GameRepository(
 
     fun getAllGames(): Flow<List<Game>> {
         return gameDao.getAllGames()
+    }
+
+    fun getAllGamesSortedByDateAdded(): Flow<List<Game>> {
+        return gameDao.getAllGamesSortedByDateAdded()
     }
 
     suspend fun getGameByTitle(title: String): Game? {
@@ -859,6 +1016,25 @@ class GameRepository(
     /**
      * Sorts game modes in the canonical order: Singleplayer, Multiplayer, Co-op.
      */
+    private fun fuzzyTitleMatch(existingTitle: String, newTitle: String): Boolean {
+        // Replace Roman numerals with numeric equivalents
+        val romanToNumeric = mapOf(
+            "ii" to "2", "iii" to "3", "iv" to "4", "v" to "5",
+            "vi" to "6", "vii" to "7", "viii" to "8", "ix" to "9"
+        )
+        
+        // Normalize titles: lowercase, replace Roman numerals, and remove non-alphanumeric characters
+        val normalizedExisting = romanToNumeric.entries.fold(existingTitle.lowercase()) { acc, (roman, numeric) ->
+            acc.replace(roman, numeric)
+        }.replace(Regex("[^a-z0-9]"), "")
+        
+        val normalizedNew = romanToNumeric.entries.fold(newTitle.lowercase()) { acc, (roman, numeric) ->
+            acc.replace(roman, numeric)
+        }.replace(Regex("[^a-z0-9]"), "")
+        
+        return normalizedExisting == normalizedNew
+    }
+
     fun sortGameModes(modes: List<String>): List<String> {
         val order = listOf("Singleplayer", "Multiplayer", "Co-op")
         return modes.sortedBy { mode ->

@@ -6,8 +6,11 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface GameDao {
-    @Query("SELECT * FROM games")
+    @Query("SELECT * FROM games ORDER BY dateAdded DESC")
     fun getAllGames(): Flow<List<Game>>
+
+    @Query("SELECT * FROM games ORDER BY dateAdded DESC")
+    fun getAllGamesSortedByDateAdded(): Flow<List<Game>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertGame(game: Game)

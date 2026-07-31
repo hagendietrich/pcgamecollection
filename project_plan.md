@@ -143,7 +143,11 @@ Vertical grid of game covers:
 ---
 
 ## 11. Ideas for future features
-- Add online platforms: epic, ubisoft, battle.net
+- Add online platforms: ubisoft, battle.net
+- Save the epic e-mail and password
+- Add a blacklist for epic titles to not sync, link it on SyncScreen
+- In the Resolve-Step show an option to add to blacklist instead of resolving
+- 
 
 ---
 

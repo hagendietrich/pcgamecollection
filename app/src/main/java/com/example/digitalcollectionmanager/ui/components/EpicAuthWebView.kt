@@ -46,11 +46,15 @@ fun EpicAuthDialog(
                     factory = { context ->
                         WebView(context).apply {
                             webViewClient = object : WebViewClient() {
+                                private var captured = false
+
                                 override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean {
+                                    if (captured) return true
                                     if (url != null && url.startsWith(EpicClient.REDIRECT_URI)) {
                                         val uri = android.net.Uri.parse(url)
                                         val code = uri.getQueryParameter("code")
                                         if (code != null) {
+                                            captured = true
                                             onCodeCaptured(code)
                                             return true
                                         }
@@ -60,12 +64,34 @@ fun EpicAuthDialog(
                                 
                                 override fun onPageFinished(view: WebView?, url: String?) {
                                     super.onPageFinished(view, url)
-                                    // Some flows redirect to a page that has the code in the URL but doesn't trigger shouldOverrideUrlLoading
+                                    if (captured) return
+
+                                    // Attempt 1: Check the URL parameters
                                     if (url != null && url.startsWith(EpicClient.REDIRECT_URI)) {
                                         val uri = android.net.Uri.parse(url)
                                         val code = uri.getQueryParameter("code")
                                         if (code != null) {
+                                            captured = true
                                             onCodeCaptured(code)
+                                            return
+                                        }
+                                    }
+
+                                    // Attempt 2: Scrape the page content for the code (handles the JSON/Security Warning page)
+                                    evaluateJavascript("(function() { return document.body.innerText; })();") { text ->
+                                        if (text != null && !captured) {
+                                            // Matches "authorizationCode": "..." or similar patterns in the warning text
+                                            val codeRegex = Regex("\"authorizationCode\"\\s*:\\s*\"([a-f0-9]+)\"", RegexOption.IGNORE_CASE)
+                                            val altCodeRegex = Regex("authorizationCode\\s*[:=]\\s*([a-f0-9]+)", RegexOption.IGNORE_CASE)
+                                            val urlCodeRegex = Regex("code=([a-f0-9]+)", RegexOption.IGNORE_CASE)
+                                            
+                                            val match = codeRegex.find(text) ?: altCodeRegex.find(text) ?: urlCodeRegex.find(text)
+                                            val code = match?.groupValues?.get(1)
+                                            
+                                            if (code != null) {
+                                                captured = true
+                                                onCodeCaptured(code)
+                                            }
                                         }
                                     }
                                 }
