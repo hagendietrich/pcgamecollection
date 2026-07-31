@@ -22,6 +22,8 @@ data class Game(
     val labels: List<String> = emptyList(),
     val completionStatus: CompletionStatus = CompletionStatus.BACKLOG,
     val isReleaseDateManual: Boolean = false,
+    val isGenreManual: Boolean = false,
+    val isGameModeManual: Boolean = false,
     val summary: String? = null,
     val screenshotUrls: List<String> = emptyList(),
     val igdbUrl: String? = null,

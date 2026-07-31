@@ -8,6 +8,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.navigation.compose.rememberNavController
+import com.example.digitalcollectionmanager.data.api.EaClient
 import com.example.digitalcollectionmanager.data.api.GogClient
 import com.example.digitalcollectionmanager.data.api.IgdbClient
 import com.example.digitalcollectionmanager.data.api.SteamClient
@@ -27,12 +28,14 @@ class MainActivity : ComponentActivity() {
         val igdbClient = IgdbClient()
         val steamClient = SteamClient()
         val gogClient = GogClient()
+        val eaClient = EaClient()
         
         val gameRepository = GameRepository(
             (application as App).database.gameDao(),
             igdbClient,
             steamClient,
             gogClient,
+            eaClient,
             settingsRepository
         )
 

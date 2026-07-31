@@ -1,5 +1,6 @@
 package com.example.digitalcollectionmanager.data.repository
 
+import com.example.digitalcollectionmanager.data.api.EaClient
 import com.example.digitalcollectionmanager.data.api.GogClient
 import com.example.digitalcollectionmanager.data.api.IgdbClient
 import com.example.digitalcollectionmanager.data.api.SteamClient
@@ -35,6 +36,7 @@ class GameRepository(
     private val igdbClient: IgdbClient,
     private val steamClient: SteamClient,
     private val gogClient: GogClient,
+    private val eaClient: EaClient,
     private val settingsRepository: SettingsRepository
 ) {
 
@@ -186,7 +188,9 @@ class GameRepository(
                     playtimes = updatedPlaytimes,
                     sourceIds = updatedSourceIds,
                     playtimeMinutes = updatedPlaytimes.values.sum(),
-                    storeUrls = updatedStoreUrls
+                    storeUrls = updatedStoreUrls,
+                    genres = if (existingGame.isGenreManual) existingGame.genres else (igdbGame?.genres?.map { it.name } ?: existingGame.genres),
+                    gameModes = if (existingGame.isGameModeManual) existingGame.gameModes else mapIgdbGameModes(igdbGame?.gameModes)
                 ))
             } else {
                 // New game (Requires metadata we fetched)
@@ -347,7 +351,9 @@ class GameRepository(
                     playtimes = updatedPlaytimes,
                     sourceIds = updatedSourceIds,
                     playtimeMinutes = updatedPlaytimes.values.sum(),
-                    storeUrls = updatedStoreUrls
+                    storeUrls = updatedStoreUrls,
+                    genres = if (existingGame.isGenreManual) existingGame.genres else (igdbGame?.genres?.map { it.name } ?: existingGame.genres),
+                    gameModes = if (existingGame.isGameModeManual) existingGame.gameModes else mapIgdbGameModes(igdbGame?.gameModes)
                 ))
             } else {
                 val igdbGame = igdbGamesMetadata[igdbId] ?: return@forEachIndexed
@@ -355,7 +361,7 @@ class GameRepository(
                     title = igdbGame.name,
                     platforms = listOf("GOG"),
                     coverImageUrl = getFullCoverUrl(igdbGame.cover?.url),
-                    releaseDate = formatTimestamp(igdbGame.firstReleaseDate),
+                    releaseDate = normalizeDate(formatTimestamp(igdbGame.firstReleaseDate)),
                     igdbId = igdbId,
                     sourceIds = mapOf("GOG" to gogSourceId),
                     playtimes = mapOf("GOG" to gogGame.playtimeMinutes),
@@ -461,7 +467,9 @@ class GameRepository(
                     playtimeMinutes = updatedPlaytimes.values.sum(),
                     completionStatus = status,
                     releaseDate = if (existingGame.isReleaseDateManual) existingGame.releaseDate else normalizeDate(pGame.releaseDate?.releaseDate),
-                    storeUrls = updatedStoreUrls
+                    storeUrls = updatedStoreUrls,
+                    genres = if (existingGame.isGenreManual) existingGame.genres else (igdbGame?.genres?.map { it.name } ?: existingGame.genres),
+                    gameModes = if (existingGame.isGameModeManual) existingGame.gameModes else mapIgdbGameModes(igdbGame?.gameModes)
                 ))
             } else {
                 val igdbGame = igdbGamesMetadata[igdbId] ?: return@forEachIndexed
@@ -497,6 +505,153 @@ class GameRepository(
     }
 
     /**
+     * Syncs games from an EA account using session tokens.
+     */
+    suspend fun syncEaAccountGames(
+        remid: String,
+        sid: String,
+        accessToken: String? = null,
+        onProgress: (progress: Float, message: String) -> Unit = { _, _ -> }
+    ): SyncResult = withContext(Dispatchers.IO) {
+        onProgress(0.05f, "Connecting to EA...")
+        
+        var currentToken = accessToken
+        if (currentToken == null && remid.isNotBlank() && sid.isNotBlank()) {
+            onProgress(0.08f, "Recovering session...")
+            currentToken = recoverEaTokenWithCookies(remid, sid)
+            if (currentToken != null) {
+                settingsRepository.saveEaAccessToken(currentToken)
+            }
+        }
+
+        val eaGames: List<Pair<String, String>> = if (currentToken != null) {
+            onProgress(0.1f, "Fetching games via GraphQL...")
+            eaClient.fetchGamesWithGraphql(currentToken)
+        } else {
+            val offerIds = eaClient.fetchOwnedGames(remid, sid, currentToken)
+            if (offerIds.isEmpty()) return@withContext SyncResult(0)
+
+            onProgress(0.1f, "Fetching game titles...")
+            offerIds.mapIndexed { index, offerId ->
+                val prog = 0.1f + (0.2f * (index.toFloat() / offerIds.size))
+                if (index % 5 == 0) onProgress(prog, "Fetching titles...")
+                val title = eaClient.fetchGameTitle(offerId)
+                if (title != null) title to offerId else null
+            }.filterNotNull()
+        }
+
+        if (eaGames.isEmpty()) return@withContext SyncResult(0)
+
+        val clientId = settingsRepository.clientId.firstOrNull() ?: return@withContext SyncResult(0)
+        val clientSecret = settingsRepository.clientSecret.firstOrNull() ?: return@withContext SyncResult(0)
+        igdbClient.authenticate(clientId, clientSecret)
+
+        val localGames = gameDao.getAllGames().first()
+        val igdbIdToOfferId = mutableMapOf<Long, String>()
+        val unmatchedGames = mutableListOf<UnmatchedGame>()
+
+        eaGames.forEachIndexed { index, (title, offerId) ->
+            val progress = 0.3f + (0.5f * (index.toFloat() / eaGames.size))
+            if (index % 5 == 0) onProgress(progress, "Matching: $title...")
+
+            val match = findBestIgdbMatch(clientId, title)
+            if (match != null) {
+                igdbIdToOfferId[match.id] = offerId
+            } else {
+                val candidates = igdbClient.searchGames(clientId, cleanTitle(title))
+                unmatchedGames.add(UnmatchedGame(
+                    storeTitle = title,
+                    storeId = offerId,
+                    platform = "EA app",
+                    playtimeMinutes = 0,
+                    candidates = candidates.take(10)
+                ))
+            }
+        }
+
+        // Fetch metadata for new games
+        val localIgdbIds = localGames.mapNotNull { it.igdbId }.toSet()
+        val newIgdbIds = igdbIdToOfferId.keys.filter { it !in localIgdbIds }
+        val igdbGamesMetadata = mutableMapOf<Long, IgdbGame>()
+
+        if (newIgdbIds.isNotEmpty()) {
+            val metadataBatches = newIgdbIds.chunked(50)
+            metadataBatches.forEachIndexed { index, batch ->
+                val progress = 0.8f + (0.1f * (index.toFloat() / metadataBatches.size))
+                onProgress(progress, "Fetching metadata...")
+                igdbClient.getGamesByIds(clientId, batch).forEach {
+                    igdbGamesMetadata[it.id] = it
+                }
+            }
+        }
+
+        var importedCount = 0
+        igdbIdToOfferId.entries.forEachIndexed { index, (igdbId, offerId) ->
+            val progress = 0.9f + (0.1f * (index.toFloat() / igdbIdToOfferId.size))
+            if (index % 10 == 0) onProgress(progress, "Updating library...")
+
+            val existingGame = gameDao.getGameByIgdbId(igdbId)
+
+            if (existingGame != null) {
+                val updatedPlatforms = existingGame.platforms.toMutableList()
+                if (!updatedPlatforms.contains("EA app")) updatedPlatforms.add("EA app")
+                
+                val updatedSourceIds = existingGame.sourceIds.toMutableMap()
+                updatedSourceIds["EA"] = offerId
+
+                val igdbGame = igdbGamesMetadata[igdbId]
+                val updatedStoreUrls = existingGame.storeUrls.toMutableMap()
+                if (igdbGame != null) {
+                    updatedStoreUrls.putAll(extractStoreUrls(igdbGame, updatedSourceIds))
+                }
+
+                gameDao.updateGame(existingGame.copy(
+                    platforms = updatedPlatforms,
+                    sourceIds = updatedSourceIds,
+                    storeUrls = updatedStoreUrls,
+                    genres = if (existingGame.isGenreManual) existingGame.genres else (igdbGame?.genres?.map { it.name } ?: existingGame.genres),
+                    gameModes = if (existingGame.isGameModeManual) existingGame.gameModes else mapIgdbGameModes(igdbGame?.gameModes)
+                ))
+            } else {
+                val igdbGame = igdbGamesMetadata[igdbId] ?: return@forEachIndexed
+                val game = Game(
+                    title = igdbGame.name,
+                    platforms = listOf("EA app"),
+                    coverImageUrl = getFullCoverUrl(igdbGame.cover?.url),
+                    releaseDate = formatTimestamp(igdbGame.firstReleaseDate),
+                    igdbId = igdbId,
+                    sourceIds = mapOf("EA" to offerId),
+                    genres = igdbGame.genres?.map { it.name } ?: emptyList(),
+                    summary = igdbGame.summary,
+                    screenshotUrls = igdbGame.screenshots?.map { getFullScreenshotUrl(it.url) } ?: emptyList(),
+                    igdbUrl = igdbGame.url,
+                    userRating = igdbGame.rating,
+                    criticRating = igdbGame.aggregatedRating,
+                    developers = igdbGame.involvedCompanies?.filter { it.developer }?.mapNotNull { it.company?.name } ?: emptyList(),
+                    publishers = igdbGame.involvedCompanies?.filter { it.publisher }?.mapNotNull { it.company?.name } ?: emptyList(),
+                    themes = igdbGame.themes?.map { it.name } ?: emptyList(),
+                    keywords = igdbGame.keywords?.map { it.name } ?: emptyList(),
+                    gameModes = mapIgdbGameModes(igdbGame.gameModes),
+                    storeUrls = extractStoreUrls(igdbGame, mapOf("EA" to offerId))
+                )
+                gameDao.insertGame(game)
+                importedCount++
+            }
+        }
+
+        onProgress(1.0f, "EA App sync complete!")
+        SyncResult(importedCount, unmatchedGames)
+    }
+
+    suspend fun exchangeEaCodeForToken(code: String): String? {
+        return eaClient.exchangeCodeForToken(code)
+    }
+
+    suspend fun recoverEaTokenWithCookies(remid: String, sid: String): String? {
+        return eaClient.fetchTokenWithCookies(remid, sid)
+    }
+
+    /**
      * Manually links an unmatched store game to a selected IGDB game.
      */
     suspend fun linkGameManually(unmatchedGame: UnmatchedGame, selectedIgdbGame: IgdbGame) = withContext(Dispatchers.IO) {
@@ -528,7 +683,9 @@ class GameRepository(
                 playtimes = updatedPlaytimes,
                 sourceIds = updatedSourceIds,
                 playtimeMinutes = updatedPlaytimes.values.sum(),
-                storeUrls = updatedStoreUrls
+                storeUrls = updatedStoreUrls,
+                genres = if (existingGame.isGenreManual) existingGame.genres else (igdbGame.genres?.map { it.name } ?: existingGame.genres),
+                gameModes = if (existingGame.isGameModeManual) existingGame.gameModes else mapIgdbGameModes(igdbGame.gameModes)
             ))
         } else {
             val game = Game(
@@ -644,7 +801,7 @@ class GameRepository(
             coverImageUrl = getFullCoverUrl(igdbGame.cover?.url),
             releaseDate = if (existingGame.isReleaseDateManual) existingGame.releaseDate else normalizeDate(formatTimestamp(igdbGame.firstReleaseDate)),
             igdbId = igdbGame.id,
-            genres = igdbGame.genres?.map { it.name } ?: emptyList(),
+            genres = if (existingGame.isGenreManual) existingGame.genres else (igdbGame.genres?.map { it.name } ?: emptyList()),
             summary = igdbGame.summary,
             screenshotUrls = igdbGame.screenshots?.map { getFullScreenshotUrl(it.url) } ?: emptyList(),
             igdbUrl = igdbGame.url,
@@ -654,7 +811,7 @@ class GameRepository(
             publishers = igdbGame.involvedCompanies?.filter { it.publisher }?.mapNotNull { it.company?.name } ?: emptyList(),
             themes = igdbGame.themes?.map { it.name } ?: emptyList(),
             keywords = igdbGame.keywords?.map { it.name } ?: emptyList(),
-            gameModes = mapIgdbGameModes(igdbGame.gameModes),
+            gameModes = if (existingGame.isGameModeManual) existingGame.gameModes else mapIgdbGameModes(igdbGame.gameModes),
             storeUrls = extractStoreUrls(igdbGame, existingGame.sourceIds)
             // Keep: id, platforms, isOwned, sourceIds, playtimes, playtimeMinutes, labels, completionStatus
         )
@@ -821,7 +978,8 @@ class GameRepository(
             publishers = igdbGame.involvedCompanies?.filter { it.publisher }?.mapNotNull { it.company?.name } ?: emptyList(),
             themes = igdbGame.themes?.map { it.name } ?: emptyList(),
             keywords = igdbGame.keywords?.map { it.name } ?: emptyList(),
-            gameModes = mapIgdbGameModes(igdbGame.gameModes),
+            gameModes = if (existing.isGameModeManual) existing.gameModes else mapIgdbGameModes(igdbGame.gameModes),
+            genres = if (existing.isGenreManual) existing.genres else (igdbGame.genres?.map { it.name } ?: existing.genres),
             storeUrls = extractStoreUrls(igdbGame, existing.sourceIds)
         )
         

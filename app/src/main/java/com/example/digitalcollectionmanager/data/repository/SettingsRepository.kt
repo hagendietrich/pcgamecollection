@@ -20,6 +20,10 @@ class SettingsRepository(private val context: Context) {
         val STEAM_API_KEY = stringPreferencesKey("steam_api_key")
         val LAST_STEAM_ID = stringPreferencesKey("last_steam_id")
         val LAST_GOG_USERNAME = stringPreferencesKey("last_gog_username")
+        val LAST_EA_EMAIL = stringPreferencesKey("last_ea_email")
+        val EA_REMID = stringPreferencesKey("ea_remid")
+        val EA_SID = stringPreferencesKey("ea_sid")
+        val EA_ACCESS_TOKEN = stringPreferencesKey("ea_access_token")
         val COLUMN_COUNT = androidx.datastore.preferences.core.intPreferencesKey("column_count")
         val SORT_ORDER = stringPreferencesKey("sort_order")
         val GROUPING_TYPE = stringPreferencesKey("grouping_type") // "NONE", "STATUS", "LABEL", "PLATFORM", "GENRE"
@@ -101,6 +105,22 @@ class SettingsRepository(private val context: Context) {
         preferences[PreferencesKeys.LAST_GOG_USERNAME]
     }
 
+    val lastEaEmail: Flow<String?> = context.dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.LAST_EA_EMAIL]
+    }
+
+    val eaRemid: Flow<String?> = context.dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.EA_REMID]
+    }
+
+    val eaSid: Flow<String?> = context.dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.EA_SID]
+    }
+
+    val eaAccessToken: Flow<String?> = context.dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.EA_ACCESS_TOKEN]
+    }
+
     val isConfigured: Flow<Boolean> = context.dataStore.data.map { preferences ->
         !preferences[PreferencesKeys.CLIENT_ID].isNullOrBlank() && 
         !preferences[PreferencesKeys.CLIENT_SECRET].isNullOrBlank()
@@ -128,6 +148,36 @@ class SettingsRepository(private val context: Context) {
     suspend fun saveLastGogUsername(name: String) {
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.LAST_GOG_USERNAME] = name
+        }
+    }
+
+    suspend fun saveLastEaEmail(email: String) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.LAST_EA_EMAIL] = email
+        }
+    }
+
+    suspend fun saveEaTokens(remid: String, sid: String, accessToken: String? = null) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.EA_REMID] = remid
+            preferences[PreferencesKeys.EA_SID] = sid
+            if (accessToken != null) {
+                preferences[PreferencesKeys.EA_ACCESS_TOKEN] = accessToken
+            }
+        }
+    }
+
+    suspend fun saveEaAccessToken(token: String) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.EA_ACCESS_TOKEN] = token
+        }
+    }
+
+    suspend fun clearEaTokens() {
+        context.dataStore.edit { preferences ->
+            preferences.remove(PreferencesKeys.EA_REMID)
+            preferences.remove(PreferencesKeys.EA_SID)
+            preferences.remove(PreferencesKeys.EA_ACCESS_TOKEN)
         }
     }
 

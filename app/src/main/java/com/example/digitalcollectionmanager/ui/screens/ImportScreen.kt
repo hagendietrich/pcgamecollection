@@ -59,7 +59,7 @@ fun ImportScreen(
         val mappingRequired = playniteImportState as PlayniteImportState.MappingRequired
         StatusMappingDialog(
             uniqueStatuses = mappingRequired.uniqueStatuses,
-            onConfirm = { mapping -> viewModel.startPlayniteImport(mapping) },
+            onConfirm = { mapping: Map<String, CompletionStatus> -> viewModel.startPlayniteImport(mapping) },
             onDismiss = { viewModel.cancelPlayniteImport() }
         )
     }

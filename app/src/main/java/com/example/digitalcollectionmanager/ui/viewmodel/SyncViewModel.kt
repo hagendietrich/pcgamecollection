@@ -6,6 +6,7 @@ import com.example.digitalcollectionmanager.data.api.models.IgdbGame
 import com.example.digitalcollectionmanager.data.repository.GameRepository
 import com.example.digitalcollectionmanager.data.repository.SettingsRepository
 import com.example.digitalcollectionmanager.data.repository.UnmatchedGame
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -19,6 +20,8 @@ class SyncViewModel(
 
     private val _uiState = MutableStateFlow<SyncUiState>(SyncUiState.Idle)
     val uiState: StateFlow<SyncUiState> = _uiState.asStateFlow()
+
+    private var syncJob: Job? = null
 
     private val _lastSteamId = MutableStateFlow("")
     val lastSteamId: StateFlow<String> = _lastSteamId.asStateFlow()
@@ -35,7 +38,8 @@ class SyncViewModel(
 
     fun syncSteam(profileUrl: String) {
         if (profileUrl.isBlank()) return
-        viewModelScope.launch {
+        syncJob?.cancel()
+        syncJob = viewModelScope.launch {
             settingsRepository.saveLastSteamId(profileUrl)
             _uiState.value = SyncUiState.Loading(0f, "Initializing Steam sync...")
             try {
@@ -65,7 +69,8 @@ class SyncViewModel(
 
     fun syncGog(username: String) {
         if (username.isBlank()) return
-        viewModelScope.launch {
+        syncJob?.cancel()
+        syncJob = viewModelScope.launch {
             settingsRepository.saveLastGogUsername(username)
             _uiState.value = SyncUiState.Loading(0f, "Initializing GOG sync...")
             try {
@@ -85,6 +90,55 @@ class SyncViewModel(
                 _uiState.value = SyncUiState.Error("GOG sync failed: ${e.message}")
             }
         }
+    }
+
+    fun syncAllAccounts() {
+        syncJob?.cancel()
+        syncJob = viewModelScope.launch {
+            val steamId = _lastSteamId.value
+            val gogUser = _lastGogUsername.value
+            
+            if (steamId.isBlank() && gogUser.isBlank()) {
+                _uiState.value = SyncUiState.Error("No accounts connected. Please provide a Steam ID or GOG Username.")
+                return@launch
+            }
+
+            var totalImported = 0
+            val allUnmatched = mutableListOf<UnmatchedGame>()
+            
+            try {
+                // Step 1: Steam
+                if (steamId.isNotBlank()) {
+                    _uiState.value = SyncUiState.Loading(0f, "Starting Steam sync...")
+                    val steamResult = gameRepository.syncSteamGames(steamId) { progress, message ->
+                        _uiState.value = SyncUiState.Loading(progress * 0.5f, "Steam: $message")
+                    }
+                    if (steamResult.importedCount >= 0) totalImported += steamResult.importedCount
+                    allUnmatched.addAll(steamResult.unmatchedGames)
+                }
+
+                // Step 2: GOG
+                if (gogUser.isNotBlank()) {
+                    _uiState.value = SyncUiState.Loading(0.5f, "Starting GOG sync...")
+                    val gogResult = gameRepository.syncGogGames(gogUser) { progress, message ->
+                        _uiState.value = SyncUiState.Loading(0.5f + (progress * 0.5f), "GOG: $message")
+                    }
+                    if (gogResult.importedCount >= 0) totalImported += gogResult.importedCount
+                    allUnmatched.addAll(gogResult.unmatchedGames)
+                }
+
+                val msg = "Sync All complete. Total new games: $totalImported"
+                _uiState.value = SyncUiState.Success(msg, allUnmatched)
+
+            } catch (e: Exception) {
+                _uiState.value = SyncUiState.Error("Sync All failed: ${e.message}")
+            }
+        }
+    }
+
+    fun cancelSync() {
+        syncJob?.cancel()
+        _uiState.value = SyncUiState.Idle
     }
 
     fun resolveUnmatchedGame(unmatched: UnmatchedGame, selection: IgdbGame) {

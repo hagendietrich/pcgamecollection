@@ -130,6 +130,10 @@ class GameListViewModel(
         .map { games -> games.flatMap { it.genres }.distinct().sorted() }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    val allPlatforms: StateFlow<List<String>> = gameRepository.getAllGames()
+        .map { games -> games.flatMap { it.platforms }.distinct().sorted() }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     private val _reMatchResults = MutableStateFlow<List<IgdbGame>>(emptyList())
     val reMatchResults: StateFlow<List<IgdbGame>> = _reMatchResults.asStateFlow()
 
@@ -199,7 +203,8 @@ class GameListViewModel(
         if (label.isBlank()) return
         viewModelScope.launch {
             val selectedIds = _selectedGameIds.value
-            gameRepository.getAllGames().first().filter { it.id in selectedIds }.forEach { game ->
+            val games = gameRepository.getAllGames().first().filter { it.id in selectedIds }
+            games.forEach { game ->
                 if (!game.labels.contains(label)) {
                     gameRepository.updateGame(game.copy(labels = (game.labels + label).distinct()))
                 }
@@ -210,10 +215,85 @@ class GameListViewModel(
     fun removeLabelFromSelected(label: String) {
         viewModelScope.launch {
             val selectedIds = _selectedGameIds.value
-            gameRepository.getAllGames().first().filter { it.id in selectedIds }.forEach { game ->
+            val games = gameRepository.getAllGames().first().filter { it.id in selectedIds }
+            games.forEach { game ->
                 if (game.labels.contains(label)) {
                     gameRepository.updateGame(game.copy(labels = game.labels - label))
                 }
+            }
+        }
+    }
+
+    fun addGenreToSelected(genre: String) {
+        if (genre.isBlank()) return
+        viewModelScope.launch {
+            val selectedIds = _selectedGameIds.value
+            val games = gameRepository.getAllGames().first().filter { it.id in selectedIds }
+            games.forEach { game ->
+                if (!game.genres.contains(genre)) {
+                    gameRepository.updateGame(game.copy(
+                        genres = (game.genres + genre).distinct(),
+                        isGenreManual = true
+                    ))
+                }
+            }
+        }
+    }
+
+    fun removeGenreFromSelected(genre: String) {
+        viewModelScope.launch {
+            val selectedIds = _selectedGameIds.value
+            val games = gameRepository.getAllGames().first().filter { it.id in selectedIds }
+            games.forEach { game ->
+                if (game.genres.contains(genre)) {
+                    gameRepository.updateGame(game.copy(
+                        genres = game.genres - genre,
+                        isGenreManual = true
+                    ))
+                }
+            }
+        }
+    }
+
+    fun addPlatformToSelected(platform: String) {
+        if (platform.isBlank()) return
+        viewModelScope.launch {
+            val selectedIds = _selectedGameIds.value
+            val games = gameRepository.getAllGames().first().filter { it.id in selectedIds }
+            games.forEach { game ->
+                if (!game.platforms.contains(platform)) {
+                    gameRepository.updateGame(game.copy(
+                        platforms = (game.platforms + platform).distinct()
+                    ))
+                }
+            }
+        }
+    }
+
+    fun removePlatformFromSelected(platform: String) {
+        viewModelScope.launch {
+            val selectedIds = _selectedGameIds.value
+            val games = gameRepository.getAllGames().first().filter { it.id in selectedIds }
+            games.forEach { game ->
+                if (game.platforms.contains(platform)) {
+                    gameRepository.updateGame(game.copy(
+                        platforms = game.platforms - platform
+                    ))
+                }
+            }
+        }
+    }
+
+    fun updateSelectedGameModes(modes: List<String>) {
+        viewModelScope.launch {
+            val selectedIds = _selectedGameIds.value
+            val sortedModes = gameRepository.sortGameModes(modes)
+            val games = gameRepository.getAllGames().first().filter { it.id in selectedIds }
+            games.forEach { game ->
+                gameRepository.updateGame(game.copy(
+                    gameModes = sortedModes,
+                    isGameModeManual = true
+                ))
             }
         }
     }
@@ -242,7 +322,10 @@ class GameListViewModel(
         viewModelScope.launch {
             gameRepository.getAllGames().first().find { it.id == gameId }?.let { game ->
                 if (!game.genres.contains(genre)) {
-                    gameRepository.updateGame(game.copy(genres = (game.genres + genre).distinct()))
+                    gameRepository.updateGame(game.copy(
+                        genres = (game.genres + genre).distinct(),
+                        isGenreManual = true
+                    ))
                 }
             }
         }
@@ -251,7 +334,37 @@ class GameListViewModel(
     fun removeGenreFromGame(gameId: Int, genre: String) {
         viewModelScope.launch {
             gameRepository.getAllGames().first().find { it.id == gameId }?.let { game ->
-                gameRepository.updateGame(game.copy(genres = game.genres - genre))
+                if (game.genres.contains(genre)) {
+                    gameRepository.updateGame(game.copy(
+                        genres = game.genres - genre,
+                        isGenreManual = true
+                    ))
+                }
+            }
+        }
+    }
+
+    fun addPlatformToGame(gameId: Int, platform: String) {
+        if (platform.isBlank()) return
+        viewModelScope.launch {
+            gameRepository.getAllGames().first().find { it.id == gameId }?.let { game ->
+                if (!game.platforms.contains(platform)) {
+                    gameRepository.updateGame(game.copy(
+                        platforms = (game.platforms + platform).distinct()
+                    ))
+                }
+            }
+        }
+    }
+
+    fun removePlatformFromGame(gameId: Int, platform: String) {
+        viewModelScope.launch {
+            gameRepository.getAllGames().first().find { it.id == gameId }?.let { game ->
+                if (game.platforms.contains(platform)) {
+                    gameRepository.updateGame(game.copy(
+                        platforms = game.platforms - platform
+                    ))
+                }
             }
         }
     }
@@ -286,7 +399,8 @@ class GameListViewModel(
             val games = gameRepository.getAllGames().first()
             games.find { it.id == gameId }?.let { game ->
                 gameRepository.updateGame(game.copy(
-                    gameModes = gameRepository.sortGameModes(modes)
+                    gameModes = gameRepository.sortGameModes(modes),
+                    isGameModeManual = true
                 ))
             }
         }

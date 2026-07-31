@@ -143,10 +143,11 @@ Vertical grid of game covers:
 ---
 
 ## 11. Ideas for future features
-- Advanced cloud sync (steam, gog, ea, ubisoft, battle.net)
+- Add online platforms: epic, ubisoft, battle.net
 
 ---
 
 ## 12. Project Plan Features Realized (post-inspection)
 - New game characteristic "Mode". Valid values: Singeplayer, Multiplayer, Co-op 
 - Filtering (visualized by a funnel in the top bar), based on labels, genres, mode
+- Advanced cloud sync (steam, gog)

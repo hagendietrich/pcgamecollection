@@ -3,6 +3,8 @@ package com.example.digitalcollectionmanager.ui.screens
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -55,11 +57,20 @@ fun SyncScreen(
                             progress = { state.progress },
                             modifier = Modifier.fillMaxWidth().height(8.dp)
                         )
-                        Text(
-                            text = state.message,
-                            style = MaterialTheme.typography.bodyMedium,
-                            modifier = Modifier.padding(top = 8.dp)
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+                        ) {
+                            Text(
+                                text = state.message,
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.weight(1f)
+                            )
+                            TextButton(onClick = { viewModel.cancelSync() }) {
+                                Text("Cancel", color = MaterialTheme.colorScheme.error)
+                            }
+                        }
                     }
                 }
                 is SyncUiState.Success -> {
@@ -131,6 +142,18 @@ fun SyncScreen(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
+                item {
+                    Button(
+                        onClick = { viewModel.syncAllAccounts() },
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = uiState !is SyncUiState.Loading && (steamUrl.isNotBlank() || gogUsername.isNotBlank())
+                    ) {
+                        Icon(Icons.Default.Sync, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(stringResource(R.string.sync_all))
+                    }
+                }
+
                 item {
                     Card(modifier = Modifier.fillMaxWidth()) {
                         Column(modifier = Modifier.padding(16.dp)) {

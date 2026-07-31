@@ -567,6 +567,9 @@ fun MultiSelectTopBar(
 ) {
     var showStatusMenu by remember { mutableStateOf(false) }
     var showLabelManager by remember { mutableStateOf(false) }
+    var showGenreManager by remember { mutableStateOf(false) }
+    var showPlatformManager by remember { mutableStateOf(false) }
+    var showModeManager by remember { mutableStateOf(false) }
 
     TopAppBar(
         title = { Text("$selectedCount Selected") },
@@ -592,68 +595,134 @@ fun MultiSelectTopBar(
             TextButton(onClick = { showLabelManager = true }) {
                 Text("Labels")
             }
+            TextButton(onClick = { showGenreManager = true }) {
+                Text("Genres")
+            }
+            TextButton(onClick = { showPlatformManager = true }) {
+                Text("Platforms")
+            }
+            TextButton(onClick = { showModeManager = true }) {
+                Text("Modes")
+            }
         }
     )
 
     if (showLabelManager) {
-        BulkLabelManagerDialog(
+        val allLabels by viewModel.allLabels.collectAsState()
+        BulkTagManagerDialog(
+            title = "Manage Labels",
             viewModel = viewModel,
+            allTags = allLabels,
+            getTagsForGame = { it.labels },
             onAdd = onAddLabel,
             onRemove = onRemoveLabel,
             onDismiss = { showLabelManager = false }
         )
     }
+
+    if (showGenreManager) {
+        val allGenres by viewModel.allGenres.collectAsState()
+        BulkTagManagerDialog(
+            title = "Manage Genres",
+            viewModel = viewModel,
+            allTags = allGenres,
+            getTagsForGame = { it.genres },
+            onAdd = { viewModel.addGenreToSelected(it) },
+            onRemove = { viewModel.removeGenreFromSelected(it) },
+            onDismiss = { showGenreManager = false }
+        )
+    }
+
+    if (showPlatformManager) {
+        val allPlatforms by viewModel.allPlatforms.collectAsState()
+        BulkTagManagerDialog(
+            title = "Manage Platforms",
+            viewModel = viewModel,
+            allTags = allPlatforms,
+            getTagsForGame = { it.platforms },
+            onAdd = { viewModel.addPlatformToSelected(it) },
+            onRemove = { viewModel.removePlatformFromSelected(it) },
+            onDismiss = { showPlatformManager = false }
+        )
+    }
+
+    if (showModeManager) {
+        BulkModeManagerDialog(
+            viewModel = viewModel,
+            onConfirm = { viewModel.updateSelectedGameModes(it) },
+            onDismiss = { showModeManager = false }
+        )
+    }
 }
 
 @Composable
-fun BulkLabelManagerDialog(
+fun BulkTagManagerDialog(
+    title: String,
     viewModel: GameListViewModel,
+    allTags: List<String>,
+    getTagsForGame: (Game) -> List<String>,
     onAdd: (String) -> Unit,
     onRemove: (String) -> Unit,
     onDismiss: () -> Unit
 ) {
     val selectedIds by viewModel.selectedGameIds.collectAsState()
-    var newLabelText by remember { mutableStateOf("") }
+    var newTagText by remember { mutableStateOf("") }
 
-    // Find labels present in ANY of the selected games
+    // Find tags present in ANY of the selected games
     val groupedGames by viewModel.groupedGames.collectAsState()
-    val commonLabels = remember(selectedIds, groupedGames) {
-        groupedGames.values.flatten().filter { it.id in selectedIds }.flatMap { it.labels }.toSet()
+    val commonTags = remember(selectedIds, groupedGames) {
+        groupedGames.values.flatten().filter { it.id in selectedIds }.flatMap { getTagsForGame(it) }.toSet()
     }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Manage Labels") },
+        title = { Text(title) },
         text = {
             Column(modifier = Modifier.fillMaxWidth().heightIn(max = 400.dp)) {
                 OutlinedTextField(
-                    value = newLabelText,
-                    onValueChange = { newLabelText = it },
-                    label = { Text("Add New Label") },
+                    value = newTagText,
+                    onValueChange = { newTagText = it },
+                    label = { Text("Add New") },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                     trailingIcon = {
                         IconButton(onClick = { 
-                            onAdd(newLabelText)
-                            newLabelText = ""
+                            onAdd(newTagText)
+                            newTagText = ""
                         }) {
                             Icon(Icons.Default.Add, contentDescription = "Add")
                         }
                     }
                 )
 
+                if (allTags.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text("Suggestions:", style = MaterialTheme.typography.labelSmall)
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth().heightIn(max = 100.dp).verticalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        allTags.forEach { tag ->
+                            AssistChip(
+                                onClick = { newTagText = tag },
+                                label = { Text(tag) }
+                            )
+                        }
+                    }
+                }
+
                 Spacer(modifier = Modifier.height(16.dp))
-                Text("Existing Labels in Selection:", style = MaterialTheme.typography.labelMedium)
+                Text("Existing in Selection:", style = MaterialTheme.typography.labelMedium)
                 
-                if (commonLabels.isEmpty()) {
-                    Text("No labels found in selected games.", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp))
+                if (commonTags.isEmpty()) {
+                    Text("No entries found in selected games.", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp))
                 } else {
                     LazyColumn(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
-                        items(commonLabels.toList()) { label ->
+                        items(commonTags.toList().sorted()) { tag ->
                             ListItem(
-                                headlineContent = { Text(label) },
+                                headlineContent = { Text(tag) },
                                 trailingContent = {
-                                    IconButton(onClick = { onRemove(label) }) {
+                                    IconButton(onClick = { onRemove(tag) }) {
                                         Icon(Icons.Default.Delete, contentDescription = "Remove", tint = MaterialTheme.colorScheme.error)
                                     }
                                 }
@@ -665,6 +734,64 @@ fun BulkLabelManagerDialog(
         },
         confirmButton = {
             TextButton(onClick = onDismiss) { Text("Done") }
+        }
+    )
+}
+
+@Composable
+fun BulkModeManagerDialog(
+    viewModel: GameListViewModel,
+    onConfirm: (List<String>) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val selectedIds by viewModel.selectedGameIds.collectAsState()
+    val allGames by viewModel.allGames.collectAsState()
+    
+    // Find common modes if possible, but usually for bulk we just want to set them all
+    val options = listOf("Singleplayer", "Multiplayer", "Co-op")
+    val selectedModes = remember { 
+        mutableStateListOf<String>().apply { 
+            // Default to modes from the first selected game if any
+            val firstGame = allGames.find { it.id in selectedIds }
+            firstGame?.gameModes?.let { addAll(it) }
+        } 
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Set Modes for Selection") },
+        text = {
+            Column {
+                options.forEach { mode ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically, 
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { 
+                                if (selectedModes.contains(mode)) selectedModes.remove(mode) else selectedModes.add(mode)
+                            }
+                            .padding(vertical = 4.dp)
+                    ) {
+                        Checkbox(
+                            checked = selectedModes.contains(mode), 
+                            onCheckedChange = { 
+                                if (it) selectedModes.add(mode) else selectedModes.remove(mode)
+                            }
+                        )
+                        Text(mode, modifier = Modifier.padding(start = 8.dp))
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(selectedModes.toList()); onDismiss() }) {
+                Text("Apply to All")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
         }
     )
 }
@@ -682,6 +809,7 @@ fun GameDetailContent(
     var showPlaytimePicker by remember { mutableStateOf(false) }
     var showAddLabelDialog by remember { mutableStateOf(false) }
     var showAddGenreDialog by remember { mutableStateOf(false) }
+    var showAddPlatformDialog by remember { mutableStateOf(false) }
     var showReleaseDatePicker by remember { mutableStateOf(false) }
     var showEditModeDialog by remember { mutableStateOf(false) }
 
@@ -723,11 +851,43 @@ fun GameDetailContent(
                 .clickable { onShowFullDetails(game.id) },
             contentScale = ContentScale.Crop
         )
+        
         Spacer(modifier = Modifier.height(16.dp))
-        Text(
-            text = stringResource(R.string.detail_platform, game.platforms.joinToString(", ")),
-            style = MaterialTheme.typography.bodyMedium
-        )
+
+        // Platforms
+        Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Platforms:", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.width(8.dp))
+                Surface(
+                    shape = MaterialTheme.shapes.small,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                    modifier = Modifier.clickable { showAddPlatformDialog = true }
+                ) {
+                    Text(
+                        text = " + Add ",
+                        style = MaterialTheme.typography.labelMedium,
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                    )
+                }
+            }
+            FlowRow(
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                horizontalArrangement = Arrangement.Center,
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                game.platforms.forEach { platform ->
+                    val isOnline = platform == "Steam" || platform == "GOG"
+                    ManageableChip(
+                        text = platform,
+                        onDelete = { viewModel.removePlatformFromGame(game.id, platform) },
+                        color = if (isOnline) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f)
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
         
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
@@ -942,6 +1102,16 @@ fun GameDetailContent(
         )
     }
 
+    if (showAddPlatformDialog) {
+        val allPlatforms by viewModel.allPlatforms.collectAsState()
+        AddTagDialog(
+            title = "Add Platform",
+            suggestions = allPlatforms,
+            onConfirm = { viewModel.addPlatformToGame(game.id, it); showAddPlatformDialog = false },
+            onDismiss = { showAddPlatformDialog = false }
+        )
+    }
+
     if (showEditModeDialog) {
         EditModeDialog(
             currentModes = game.gameModes,
@@ -1006,7 +1176,8 @@ fun EditModeDialog(
 @Composable
 fun ManageableChip(
     text: String,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    color: Color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f)
 ) {
     var showDeleteConfirm by remember { mutableStateOf(false) }
 
@@ -1017,7 +1188,7 @@ fun ManageableChip(
                 onLongClick = { showDeleteConfirm = true }
             ),
         shape = MaterialTheme.shapes.small,
-        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f),
+        color = color,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
     ) {
         Text(
