@@ -3,6 +3,8 @@ package com.example.digitalcollectionmanager.data.repository
 import android.content.Context
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.security.crypto.EncryptedSharedPreferences
+import androidx.security.crypto.MasterKey
 import com.example.digitalcollectionmanager.data.model.GroupingType
 import com.example.digitalcollectionmanager.data.model.LibraryFilters
 import com.example.digitalcollectionmanager.data.model.SortOrder
@@ -21,6 +23,7 @@ class SettingsRepository(private val context: Context) {
         val LAST_STEAM_ID = stringPreferencesKey("last_steam_id")
         val LAST_GOG_USERNAME = stringPreferencesKey("last_gog_username")
         val LAST_EA_EMAIL = stringPreferencesKey("last_ea_email")
+        val EPIC_EMAIL = stringPreferencesKey("epic_email")
         val EA_REMID = stringPreferencesKey("ea_remid")
         val EA_SID = stringPreferencesKey("ea_sid")
         val EA_ACCESS_TOKEN = stringPreferencesKey("ea_access_token")
@@ -107,6 +110,35 @@ class SettingsRepository(private val context: Context) {
 
     val lastEaEmail: Flow<String?> = context.dataStore.data.map { preferences ->
         preferences[PreferencesKeys.LAST_EA_EMAIL]
+    }
+
+    val epicEmail: Flow<String?> = context.dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.EPIC_EMAIL]
+    }
+
+    private val masterKey = MasterKey.Builder(context)
+        .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+        .build()
+
+    private val encryptedPrefs = EncryptedSharedPreferences.create(
+        context,
+        "secure_settings",
+        masterKey,
+        EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+        EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+    )
+
+    fun getEpicPassword(): String? {
+        return encryptedPrefs.getString("epic_password", null)
+    }
+
+    suspend fun saveEpicCredentials(email: String, password: String?) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.EPIC_EMAIL] = email.trim()
+        }
+        if (password != null) {
+            encryptedPrefs.edit().putString("epic_password", password.trim()).apply()
+        }
     }
 
     val eaRemid: Flow<String?> = context.dataStore.data.map { preferences ->

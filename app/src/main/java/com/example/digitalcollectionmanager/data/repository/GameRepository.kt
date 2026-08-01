@@ -6,14 +6,15 @@ import com.example.digitalcollectionmanager.data.api.IgdbClient
 import com.example.digitalcollectionmanager.data.api.SteamClient
 import com.example.digitalcollectionmanager.data.api.models.*
 import com.example.digitalcollectionmanager.data.dao.GameDao
+import com.example.digitalcollectionmanager.data.dao.IgnoredGameDao
 import com.example.digitalcollectionmanager.data.model.CompletionStatus
 import com.example.digitalcollectionmanager.data.model.Game
+import com.example.digitalcollectionmanager.data.model.IgnoredGame
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.text.SimpleDateFormat
 import java.util.*
@@ -33,6 +34,7 @@ data class SyncResult(
 
 class GameRepository(
     private val gameDao: GameDao,
+    private val ignoredGameDao: IgnoredGameDao,
     private val igdbClient: IgdbClient,
     private val steamClient: SteamClient,
     private val gogClient: GogClient,
@@ -58,6 +60,7 @@ class GameRepository(
         }
         if (epicRecords.isEmpty()) return@withContext SyncResult(0)
 
+        val ignoredIds = ignoredGameDao.getIgnoredIdsByPlatform("Epic").toSet()
         val clientId = settingsRepository.clientId.firstOrNull() ?: return@withContext SyncResult(0)
         val clientSecret = settingsRepository.clientSecret.firstOrNull() ?: return@withContext SyncResult(0)
         igdbClient.authenticate(clientId, clientSecret)
@@ -67,6 +70,12 @@ class GameRepository(
         val unmatchedGames = mutableListOf<UnmatchedGame>()
 
         epicRecords.forEachIndexed { index, record ->
+            // Skip if ignored
+            if (ignoredIds.contains(record.catalogItemId)) {
+                println("Epic Sync Filter: Skipping ignored game - CatalogItemId: '${record.catalogItemId}'")
+                return@forEachIndexed
+            }
+
             // Skip if recordType is not APPLICATION (e.g., DLCs, add-ons)
             if (record.recordType != "APPLICATION") {
                 println("Epic Sync Filter: Skipping non-application record - Type: '${record.recordType}', CatalogItemId: '${record.catalogItemId}'")
@@ -211,6 +220,10 @@ class GameRepository(
         val steamGames = steamClient.fetchOwnedGames(apiKey, steamId)
         if (steamGames.isEmpty()) return@withContext SyncResult(0)
 
+        val ignoredIds = ignoredGameDao.getIgnoredIdsByPlatform("Steam").toSet()
+        val filteredSteamGames = steamGames.filter { it.appid.toString() !in ignoredIds }
+        if (filteredSteamGames.isEmpty()) return@withContext SyncResult(0)
+
         // Local Lookup Optimization: Get existing Steam IDs from database
         val localGames = gameDao.getAllGames().first()
         val localSteamToIgdb = localGames.mapNotNull { game ->
@@ -228,7 +241,7 @@ class GameRepository(
         val unmatchedGames = mutableListOf<UnmatchedGame>()
 
         // Separate known from unknown
-        steamGames.forEach { steamGame ->
+        filteredSteamGames.forEach { steamGame ->
             val appId = steamGame.appid.toString()
             val knownIgdbId = localSteamToIgdb[appId]
             if (knownIgdbId != null) {
@@ -301,7 +314,7 @@ class GameRepository(
             val progress = 0.8f + (0.2f * (index.toFloat() / totalToImport))
             if (index % 10 == 0) onProgress(progress, "Updating library...")
 
-            val steamGame = steamGames.find { it.appid.toString() == steamAppId } ?: return@forEachIndexed
+            val steamGame = filteredSteamGames.find { it.appid.toString() == steamAppId } ?: return@forEachIndexed
             val existingGame = gameDao.getGameByIgdbId(igdbId)
             
             if (existingGame != null) {
@@ -381,6 +394,10 @@ class GameRepository(
         val gogGames = gogClient.fetchPublicGames(username)
         if (gogGames.isEmpty()) return@withContext SyncResult(0)
 
+        val ignoredIds = ignoredGameDao.getIgnoredIdsByPlatform("GOG").toSet()
+        val filteredGogGames = gogGames.filter { it.gogId !in ignoredIds }
+        if (filteredGogGames.isEmpty()) return@withContext SyncResult(0)
+
         // Local Lookup Optimization
         val localGames = gameDao.getAllGames().first()
         val localGogToIgdb = localGames.mapNotNull { game ->
@@ -397,7 +414,7 @@ class GameRepository(
         val unknownGogGames = mutableListOf<GogClient.GogGame>()
         val unmatchedGames = mutableListOf<UnmatchedGame>()
 
-        gogGames.forEach { gogGame ->
+        filteredGogGames.forEach { gogGame ->
             val knownIgdbId = localGogToIgdb[gogGame.gogId]
             if (knownIgdbId != null) {
                 igdbIdToGogId[knownIgdbId] = gogGame.gogId
@@ -469,7 +486,7 @@ class GameRepository(
             val progress = 0.8f + (0.2f * (index.toFloat() / totalToImport))
             if (index % 10 == 0) onProgress(progress, "Updating library...")
 
-            val gogGame = gogGames.find { it.gogId == gogSourceId } ?: return@forEachIndexed
+            val gogGame = filteredGogGames.find { it.gogId == gogSourceId } ?: return@forEachIndexed
             val existingGame = gameDao.getGameByIgdbId(igdbId)
             
             if (existingGame != null) {
@@ -829,6 +846,33 @@ class GameRepository(
 
     suspend fun deleteGame(game: Game) {
         gameDao.deleteGame(game)
+    }
+
+    suspend fun deleteGameAndIgnore(game: Game) = withContext(Dispatchers.IO) {
+        gameDao.deleteGame(game)
+        
+        // Add to ignore list for each applicable platform
+        if (game.platforms.contains("Steam") && game.sourceIds.containsKey("STEAM")) {
+            ignoredGameDao.insertIgnoredGame(IgnoredGame(title = game.title, platform = "Steam", catalogItemId = game.sourceIds["STEAM"]!!))
+        }
+        if (game.platforms.contains("GOG") && game.sourceIds.containsKey("GOG")) {
+            ignoredGameDao.insertIgnoredGame(IgnoredGame(title = game.title, platform = "GOG", catalogItemId = game.sourceIds["GOG"]!!))
+        }
+        if (game.platforms.contains("Epic") && game.sourceIds.containsKey("EPIC")) {
+            ignoredGameDao.insertIgnoredGame(IgnoredGame(title = game.title, platform = "Epic", catalogItemId = game.sourceIds["EPIC"]!!))
+        }
+    }
+
+    fun getIgnoredGames(): Flow<List<IgnoredGame>> {
+        return ignoredGameDao.getAllIgnoredGames()
+    }
+
+    suspend fun ignoreGame(title: String, platform: String, catalogItemId: String) {
+        ignoredGameDao.insertIgnoredGame(IgnoredGame(title = title, platform = platform, catalogItemId = catalogItemId))
+    }
+
+    suspend fun removeIgnoredGame(id: Int) {
+        ignoredGameDao.deleteIgnoredGame(id)
     }
 
     fun getAllGames(): Flow<List<Game>> {

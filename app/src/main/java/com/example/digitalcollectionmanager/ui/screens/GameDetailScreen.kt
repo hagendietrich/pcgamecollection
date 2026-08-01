@@ -38,6 +38,9 @@ import coil.compose.AsyncImage
 import com.example.digitalcollectionmanager.R
 import com.example.digitalcollectionmanager.ui.viewmodel.GameDetailUiState
 import com.example.digitalcollectionmanager.ui.viewmodel.GameDetailViewModel
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -273,6 +276,20 @@ fun GameDetailScreen(
                                         }
                                     }
                                 }
+
+                                Spacer(modifier = Modifier.height(32.dp))
+
+                                // Date Added
+                                val dateAddedStr = remember(game.dateAdded) {
+                                    SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(game.dateAdded))
+                                }
+                                Text(
+                                    text = "Date Added: $dateAddedStr",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                                    modifier = Modifier.fillMaxWidth(),
+                                    textAlign = TextAlign.Center
+                                )
 
                                 Spacer(modifier = Modifier.height(64.dp))
                             }

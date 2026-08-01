@@ -235,11 +235,17 @@ class GameListViewModel(
         _selectedGameIds.value = emptySet()
     }
 
-    fun deleteSelectedGames() {
+    fun deleteSelectedGames(andIgnore: Boolean = false) {
         viewModelScope.launch {
             val selectedIds = _selectedGameIds.value
             val games = gameRepository.getAllGames().first().filter { it.id in selectedIds }
-            games.forEach { gameRepository.deleteGame(it) }
+            games.forEach { 
+                if (andIgnore) {
+                    gameRepository.deleteGameAndIgnore(it)
+                } else {
+                    gameRepository.deleteGame(it)
+                }
+            }
             clearSelection()
         }
     }
@@ -424,9 +430,13 @@ class GameListViewModel(
         }
     }
 
-    fun deleteGame(game: Game) {
+    fun deleteGame(game: Game, andIgnore: Boolean = false) {
         viewModelScope.launch {
-            gameRepository.deleteGame(game)
+            if (andIgnore) {
+                gameRepository.deleteGameAndIgnore(game)
+            } else {
+                gameRepository.deleteGame(game)
+            }
         }
     }
 

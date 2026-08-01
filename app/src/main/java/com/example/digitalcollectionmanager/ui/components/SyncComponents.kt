@@ -6,10 +6,12 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.digitalcollectionmanager.data.api.models.IgdbGame
@@ -19,6 +21,7 @@ import com.example.digitalcollectionmanager.data.repository.UnmatchedGame
 fun UnmatchedGameRow(
     unmatched: UnmatchedGame,
     onResolve: (IgdbGame) -> Unit,
+    onIgnore: () -> Unit,
     onSearchCustom: (String) -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
@@ -34,7 +37,14 @@ fun UnmatchedGameRow(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Column(modifier = Modifier.weight(1f)) {
+                IconButton(onClick = onIgnore) {
+                    Icon(
+                        imageVector = Icons.Default.VisibilityOff,
+                        contentDescription = "Ignore Game",
+                        tint = MaterialTheme.colorScheme.outline
+                    )
+                }
+                Column(modifier = Modifier.weight(1f).padding(horizontal = 8.dp)) {
                     Text(unmatched.storeTitle, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
                     Text("${unmatched.platform} ID: ${unmatched.storeId}", style = MaterialTheme.typography.labelSmall)
                 }

@@ -3,14 +3,17 @@ package com.example.digitalcollectionmanager.ui.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.digitalcollectionmanager.data.api.models.IgdbGame
+import com.example.digitalcollectionmanager.data.model.IgnoredGame
 import com.example.digitalcollectionmanager.data.repository.GameRepository
 import com.example.digitalcollectionmanager.data.repository.SettingsRepository
 import com.example.digitalcollectionmanager.data.repository.UnmatchedGame
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 class SyncViewModel(
@@ -29,13 +32,24 @@ class SyncViewModel(
     private val _lastGogUsername = MutableStateFlow("")
     val lastGogUsername: StateFlow<String> = _lastGogUsername.asStateFlow()
 
+    private val _epicEmail = MutableStateFlow("")
+    val epicEmail: StateFlow<String> = _epicEmail.asStateFlow()
+
+    private val _epicPassword = MutableStateFlow("")
+    val epicPassword: StateFlow<String> = _epicPassword.asStateFlow()
+
     private val _showEpicLogin = MutableStateFlow(false)
     val showEpicLogin: StateFlow<Boolean> = _showEpicLogin.asStateFlow()
 
+    val ignoredGames: StateFlow<List<IgnoredGame>> = gameRepository.getIgnoredGames()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     init {
         viewModelScope.launch {
-            _lastSteamId.value = settingsRepository.lastSteamId.firstOrNull() ?: ""
-            _lastGogUsername.value = settingsRepository.lastGogUsername.firstOrNull() ?: ""
+            settingsRepository.lastSteamId.firstOrNull()?.let { _lastSteamId.value = it }
+            settingsRepository.lastGogUsername.firstOrNull()?.let { _lastGogUsername.value = it }
+            settingsRepository.epicEmail.firstOrNull()?.let { _epicEmail.value = it }
+            settingsRepository.getEpicPassword()?.let { _epicPassword.value = it }
         }
     }
 
@@ -97,6 +111,16 @@ class SyncViewModel(
 
     fun setShowEpicLogin(show: Boolean) {
         _showEpicLogin.value = show
+    }
+
+    fun updateEpicCredentials(email: String, password: String) {
+        val trimmedEmail = email.trim()
+        val trimmedPassword = password.trim()
+        _epicEmail.value = trimmedEmail
+        _epicPassword.value = trimmedPassword
+        viewModelScope.launch {
+            settingsRepository.saveEpicCredentials(trimmedEmail, trimmedPassword)
+        }
     }
 
     fun onEpicCodeCaptured(code: String) {
@@ -177,6 +201,24 @@ class SyncViewModel(
                 val updatedList = currentState.unmatchedGames.filter { it != unmatched }
                 _uiState.value = currentState.copy(unmatchedGames = updatedList)
             }
+        }
+    }
+
+    fun ignoreUnmatchedGame(unmatched: UnmatchedGame) {
+        viewModelScope.launch {
+            gameRepository.ignoreGame(unmatched.storeTitle, unmatched.platform, unmatched.storeId)
+            
+            val currentState = _uiState.value
+            if (currentState is SyncUiState.Success) {
+                val updatedList = currentState.unmatchedGames.filter { it != unmatched }
+                _uiState.value = currentState.copy(unmatchedGames = updatedList)
+            }
+        }
+    }
+
+    fun removeIgnoredGame(id: Int) {
+        viewModelScope.launch {
+            gameRepository.removeIgnoredGame(id)
         }
     }
 

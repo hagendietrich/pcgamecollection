@@ -91,6 +91,18 @@ class ImportViewModel(
         }
     }
 
+    fun ignoreUnmatchedGame(unmatched: UnmatchedGame) {
+        viewModelScope.launch {
+            gameRepository.ignoreGame(unmatched.storeTitle, unmatched.platform, unmatched.storeId)
+            
+            val currentState = _uiState.value
+            if (currentState is ImportUiState.Success) {
+                val updatedList = currentState.unmatchedGames.filter { it != unmatched }
+                _uiState.value = currentState.copy(unmatchedGames = updatedList)
+            }
+        }
+    }
+
     fun searchCustomCandidates(unmatched: UnmatchedGame, query: String) {
         viewModelScope.launch {
             try {

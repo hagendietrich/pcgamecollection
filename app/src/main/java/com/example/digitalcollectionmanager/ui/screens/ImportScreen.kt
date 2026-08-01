@@ -135,6 +135,7 @@ fun ImportScreen(
                                         onResolve = { selection -> 
                                             viewModel.resolveUnmatchedGame(unmatched, selection) 
                                         },
+                                        onIgnore = { viewModel.ignoreUnmatchedGame(unmatched) },
                                         onSearchCustom = { query ->
                                             viewModel.searchCustomCandidates(unmatched, query)
                                         }

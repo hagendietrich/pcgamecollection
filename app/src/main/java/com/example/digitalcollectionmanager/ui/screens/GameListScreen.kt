@@ -415,8 +415,8 @@ fun GameListScreen(
                     viewModel.updateGame(updatedGame)
                     selectedGame = updatedGame
                 },
-                onDelete = {
-                    viewModel.deleteGame(selectedGame!!)
+                onDelete = { andIgnore ->
+                    viewModel.deleteGame(selectedGame!!, andIgnore)
                     showBottomSheet = false
                 },
                 onReMatchClick = {
@@ -695,14 +695,40 @@ fun MultiSelectTopBar(
     }
 
     if (showDeleteConfirmation) {
+        var addToIgnoreList by remember { mutableStateOf(false) }
+        val selectedIds by viewModel.selectedGameIds.collectAsState()
+        val allGames by viewModel.allGames.collectAsState()
+        val hasOnlinePlatform = remember(selectedIds, allGames) {
+            allGames.filter { it.id in selectedIds }
+                .any { game -> game.platforms.any { it == "Steam" || it == "GOG" || it == "Epic" } }
+        }
+
         AlertDialog(
             onDismissRequest = { showDeleteConfirmation = false },
             title = { Text("Delete Games") },
-            text = { Text("Are you sure you want to delete all $selectedCount selected games? This cannot be undone.") },
+            text = {
+                Column {
+                    Text("Are you sure you want to delete all $selectedCount selected games? This cannot be undone.")
+                    if (hasOnlinePlatform) {
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(
+                                checked = addToIgnoreList,
+                                onCheckedChange = { addToIgnoreList = it }
+                            )
+                            Text(
+                                "Add to Ignore List (prevents future sync)",
+                                modifier = Modifier.padding(start = 8.dp),
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                        }
+                    }
+                }
+            },
             confirmButton = {
                 TextButton(
                     onClick = {
-                        viewModel.deleteSelectedGames()
+                        viewModel.deleteSelectedGames(addToIgnoreList)
                         showDeleteConfirmation = false
                     },
                     colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
@@ -866,7 +892,7 @@ fun GameDetailContent(
     game: Game,
     viewModel: GameListViewModel,
     onUpdate: (Game) -> Unit,
-    onDelete: () -> Unit,
+    onDelete: (Boolean) -> Unit,
     onReMatchClick: () -> Unit,
     onShowFullDetails: (Int) -> Unit
 ) {
@@ -877,6 +903,7 @@ fun GameDetailContent(
     var showReleaseDatePicker by remember { mutableStateOf(false) }
     var showEditModeDialog by remember { mutableStateOf(false) }
     var showAlternativeCoversDialog by remember { mutableStateOf(false) }
+    var showDeleteConfirmDialog by remember { mutableStateOf(false) }
 
     val isSearchingReMatch by viewModel.isSearchingReMatch.collectAsState()
 
@@ -982,8 +1009,9 @@ fun GameDetailContent(
         
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                text = stringResource(R.string.detail_released, ""),
-                style = MaterialTheme.typography.bodyMedium
+                text = "Released: ",
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Bold
             )
             Text(
                 text = game.releaseDate ?: "Add Release Date",
@@ -1134,13 +1162,58 @@ fun GameDetailContent(
 
         Spacer(modifier = Modifier.height(32.dp))
         Button(
-            onClick = onDelete,
+            onClick = { showDeleteConfirmDialog = true },
             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
             modifier = Modifier.fillMaxWidth()
         ) {
             Text(stringResource(R.string.detail_remove))
         }
         Spacer(modifier = Modifier.height(16.dp))
+    }
+
+    if (showDeleteConfirmDialog) {
+        var addToIgnoreList by remember { mutableStateOf(false) }
+        val hasOnlinePlatform = game.platforms.any { it == "Steam" || it == "GOG" || it == "Epic" }
+
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirmDialog = false },
+            title = { Text("Delete Game") },
+            text = {
+                Column {
+                    Text("Are you sure you want to delete \"${game.title}\"?")
+                    if (hasOnlinePlatform) {
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(
+                                checked = addToIgnoreList,
+                                onCheckedChange = { addToIgnoreList = it }
+                            )
+                            Text(
+                                "Add to Ignore List (prevents future sync)",
+                                modifier = Modifier.padding(start = 8.dp),
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = { 
+                        onDelete(addToIgnoreList)
+                        showDeleteConfirmDialog = false 
+                    },
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Delete")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirmDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 
     if (showPlaytimePicker) {

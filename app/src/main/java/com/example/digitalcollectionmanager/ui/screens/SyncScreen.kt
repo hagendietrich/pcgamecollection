@@ -4,14 +4,18 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.example.digitalcollectionmanager.R
+import com.example.digitalcollectionmanager.data.model.IgnoredGame
 import com.example.digitalcollectionmanager.ui.components.AppTopBar
 import com.example.digitalcollectionmanager.ui.components.EpicAuthDialog
 import com.example.digitalcollectionmanager.ui.components.UnmatchedGameRow
@@ -28,12 +32,22 @@ fun SyncScreen(
     val lastSteamId by viewModel.lastSteamId.collectAsState()
     val lastGogUsername by viewModel.lastGogUsername.collectAsState()
     val showEpicLogin by viewModel.showEpicLogin.collectAsState()
+    val ignoredGames by viewModel.ignoredGames.collectAsState()
+    val epicEmail by viewModel.epicEmail.collectAsState()
+    val epicPassword by viewModel.epicPassword.collectAsState()
 
     var steamUrl by remember(lastSteamId) { mutableStateOf(lastSteamId) }
     var gogUsername by remember(lastGogUsername) { mutableStateOf(lastGogUsername) }
+    
+    var epicEmailInput by remember(epicEmail) { mutableStateOf(epicEmail) }
+    var epicPasswordInput by remember(epicPassword) { mutableStateOf(epicPassword) }
+
+    var platformForIgnoreList by remember { mutableStateOf<String?>(null) }
 
     if (showEpicLogin) {
         EpicAuthDialog(
+            email = epicEmailInput,
+            password = epicPasswordInput,
             onCodeCaptured = { code -> viewModel.onEpicCodeCaptured(code) },
             onDismiss = { viewModel.setShowEpicLogin(false) }
         )
@@ -119,6 +133,7 @@ fun SyncScreen(
                                         onResolve = { selection -> 
                                             viewModel.resolveUnmatchedGame(unmatched, selection) 
                                         },
+                                        onIgnore = { viewModel.ignoreUnmatchedGame(unmatched) },
                                         onSearchCustom = { query ->
                                             viewModel.searchCustomCandidates(unmatched, query)
                                         }
@@ -166,7 +181,16 @@ fun SyncScreen(
                 item {
                     Card(modifier = Modifier.fillMaxWidth()) {
                         Column(modifier = Modifier.padding(16.dp)) {
-                            Text("Steam Sync", style = MaterialTheme.typography.titleMedium)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("Steam Sync", style = MaterialTheme.typography.titleMedium)
+                                IconButton(onClick = { platformForIgnoreList = "Steam" }) {
+                                    Icon(Icons.Default.VisibilityOff, contentDescription = "Manage Ignore List")
+                                }
+                            }
                             OutlinedTextField(
                                 value = steamUrl,
                                 onValueChange = { steamUrl = it },
@@ -188,7 +212,16 @@ fun SyncScreen(
                 item {
                     Card(modifier = Modifier.fillMaxWidth()) {
                         Column(modifier = Modifier.padding(16.dp)) {
-                            Text("GOG Sync", style = MaterialTheme.typography.titleMedium)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("GOG Sync", style = MaterialTheme.typography.titleMedium)
+                                IconButton(onClick = { platformForIgnoreList = "GOG" }) {
+                                    Icon(Icons.Default.VisibilityOff, contentDescription = "Manage Ignore List")
+                                }
+                            }
                             OutlinedTextField(
                                 value = gogUsername,
                                 onValueChange = { gogUsername = it },
@@ -209,11 +242,39 @@ fun SyncScreen(
                 item {
                     Card(modifier = Modifier.fillMaxWidth()) {
                         Column(modifier = Modifier.padding(16.dp)) {
-                            Text("Epic Games Sync", style = MaterialTheme.typography.titleMedium)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("Epic Games Sync", style = MaterialTheme.typography.titleMedium)
+                                IconButton(onClick = { platformForIgnoreList = "Epic" }) {
+                                    Icon(Icons.Default.VisibilityOff, contentDescription = "Manage Ignore List")
+                                }
+                            }
                             Text(
                                 "Connect your Epic Games account to sync your library. A secure login window will open.",
                                 style = MaterialTheme.typography.bodySmall,
                                 modifier = Modifier.padding(vertical = 8.dp)
+                            )
+                            OutlinedTextField(
+                                value = epicEmailInput,
+                                onValueChange = { 
+                                    epicEmailInput = it
+                                    viewModel.updateEpicCredentials(it, epicPasswordInput)
+                                },
+                                label = { Text("Epic Email") },
+                                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
+                            )
+                            OutlinedTextField(
+                                value = epicPasswordInput,
+                                onValueChange = { 
+                                    epicPasswordInput = it
+                                    viewModel.updateEpicCredentials(epicEmailInput, it)
+                                },
+                                label = { Text("Epic Password") },
+                                visualTransformation = PasswordVisualTransformation(),
+                                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
                             )
                             Button(
                                 onClick = { viewModel.setShowEpicLogin(true) },
@@ -228,4 +289,52 @@ fun SyncScreen(
             }
         }
     }
+
+    if (platformForIgnoreList != null) {
+        val platform = platformForIgnoreList!!
+        val list = ignoredGames.filter { it.platform == platform }
+        IgnoreListDialog(
+            platform = platform,
+            ignoredGames = list,
+            onRemove = { viewModel.removeIgnoredGame(it.id) },
+            onDismiss = { platformForIgnoreList = null }
+        )
+    }
+}
+
+@Composable
+fun IgnoreListDialog(
+    platform: String,
+    ignoredGames: List<IgnoredGame>,
+    onRemove: (IgnoredGame) -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("$platform Ignore List") },
+        text = {
+            if (ignoredGames.isEmpty()) {
+                Text("No games ignored for $platform.")
+            } else {
+                LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 400.dp)) {
+                    items(ignoredGames) { game ->
+                        ListItem(
+                            headlineContent = { Text(game.title) },
+                            trailingContent = {
+                                IconButton(onClick = { onRemove(game) }) {
+                                    Icon(Icons.Default.Delete, contentDescription = "Remove", tint = MaterialTheme.colorScheme.error)
+                                }
+                            }
+                        )
+                        HorizontalDivider()
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Close")
+            }
+        }
+    )
 }
