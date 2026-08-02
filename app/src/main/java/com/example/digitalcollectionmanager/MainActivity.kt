@@ -8,11 +8,13 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.navigation.compose.rememberNavController
+import com.example.digitalcollectionmanager.data.api.BattleNetClient
 import com.example.digitalcollectionmanager.data.api.EaClient
 import com.example.digitalcollectionmanager.data.api.EpicClient
 import com.example.digitalcollectionmanager.data.api.GogClient
 import com.example.digitalcollectionmanager.data.api.IgdbClient
 import com.example.digitalcollectionmanager.data.api.SteamClient
+import com.example.digitalcollectionmanager.data.api.UbisoftClient
 import com.example.digitalcollectionmanager.data.repository.GameRepository
 import com.example.digitalcollectionmanager.data.repository.SettingsRepository
 import com.example.digitalcollectionmanager.ui.navigation.AppNavGraph
@@ -30,6 +32,8 @@ class MainActivity : ComponentActivity() {
         val steamClient = SteamClient()
         val gogClient = GogClient()
         val epicClient = EpicClient()
+        val ubisoftClient = UbisoftClient()
+        val battleNetClient = BattleNetClient()
         
         val gameRepository = GameRepository(
             (application as App).database.gameDao(),
@@ -38,6 +42,8 @@ class MainActivity : ComponentActivity() {
             steamClient,
             gogClient,
             epicClient,
+            ubisoftClient,
+            battleNetClient,
             settingsRepository
         )
 

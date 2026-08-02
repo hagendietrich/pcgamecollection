@@ -24,6 +24,7 @@ class SettingsRepository(private val context: Context) {
         val LAST_GOG_USERNAME = stringPreferencesKey("last_gog_username")
         val LAST_EA_EMAIL = stringPreferencesKey("last_ea_email")
         val EPIC_EMAIL = stringPreferencesKey("epic_email")
+        val UBISOFT_EMAIL = stringPreferencesKey("ubisoft_email")
         val EA_REMID = stringPreferencesKey("ea_remid")
         val EA_SID = stringPreferencesKey("ea_sid")
         val EA_ACCESS_TOKEN = stringPreferencesKey("ea_access_token")
@@ -116,6 +117,10 @@ class SettingsRepository(private val context: Context) {
         preferences[PreferencesKeys.EPIC_EMAIL]
     }
 
+    val ubisoftEmail: Flow<String?> = context.dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.UBISOFT_EMAIL]
+    }
+
     private val masterKey = MasterKey.Builder(context)
         .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
         .build()
@@ -132,12 +137,25 @@ class SettingsRepository(private val context: Context) {
         return encryptedPrefs.getString("epic_password", null)
     }
 
+    fun getUbisoftPassword(): String? {
+        return encryptedPrefs.getString("ubisoft_password", null)
+    }
+
     suspend fun saveEpicCredentials(email: String, password: String?) {
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.EPIC_EMAIL] = email.trim()
         }
         if (password != null) {
             encryptedPrefs.edit().putString("epic_password", password.trim()).apply()
+        }
+    }
+
+    suspend fun saveUbisoftCredentials(email: String, password: String?) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.UBISOFT_EMAIL] = email.trim()
+        }
+        if (password != null) {
+            encryptedPrefs.edit().putString("ubisoft_password", password.trim()).apply()
         }
     }
 

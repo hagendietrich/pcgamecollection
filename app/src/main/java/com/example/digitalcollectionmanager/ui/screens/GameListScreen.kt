@@ -700,7 +700,7 @@ fun MultiSelectTopBar(
         val allGames by viewModel.allGames.collectAsState()
         val hasOnlinePlatform = remember(selectedIds, allGames) {
             allGames.filter { it.id in selectedIds }
-                .any { game -> game.platforms.any { it == "Steam" || it == "GOG" || it == "Epic" } }
+                .any { game -> game.platforms.any { it == "Steam" || it == "GOG" || it == "Epic" || it == "Ubisoft" || it == "Battle.net" } }
         }
 
         AlertDialog(
@@ -1173,7 +1173,7 @@ fun GameDetailContent(
 
     if (showDeleteConfirmDialog) {
         var addToIgnoreList by remember { mutableStateOf(false) }
-        val hasOnlinePlatform = game.platforms.any { it == "Steam" || it == "GOG" || it == "Epic" }
+        val hasOnlinePlatform = game.platforms.any { it == "Steam" || it == "GOG" || it == "Epic" || it == "Ubisoft" || it == "Battle.net" }
 
         AlertDialog(
             onDismissRequest = { showDeleteConfirmDialog = false },

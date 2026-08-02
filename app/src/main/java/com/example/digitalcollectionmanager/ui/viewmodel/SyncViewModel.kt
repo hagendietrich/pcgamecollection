@@ -41,6 +41,12 @@ class SyncViewModel(
     private val _showEpicLogin = MutableStateFlow(false)
     val showEpicLogin: StateFlow<Boolean> = _showEpicLogin.asStateFlow()
 
+    private val _showUbisoftLogin = MutableStateFlow(false)
+    val showUbisoftLogin: StateFlow<Boolean> = _showUbisoftLogin.asStateFlow()
+
+    private val _showBattleNetLogin = MutableStateFlow(false)
+    val showBattleNetLogin: StateFlow<Boolean> = _showBattleNetLogin.asStateFlow()
+
     val ignoredGames: StateFlow<List<IgnoredGame>> = gameRepository.getIgnoredGames()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -68,11 +74,15 @@ class SyncViewModel(
                         _uiState.value = SyncUiState.Error("Steam API Key is missing. Please configure it in Settings.")
                     }
                     result.importedCount >= 0 -> {
-                        val msg = if (result.importedCount > 0) 
-                            "Successfully synced ${result.importedCount} games from Steam."
-                        else "Steam library up to date. No new games were added."
+                        val msg = StringBuilder("Successfully synced ${result.importedCount} games from Steam.")
+                        if (result.alreadyPresentCount > 0) {
+                            msg.append(" ${result.alreadyPresentCount} games were already in your library.")
+                        }
+                        if (result.ignoredCount > 0) {
+                            msg.append(" ${result.ignoredCount} games were ignored.")
+                        }
                         
-                        _uiState.value = SyncUiState.Success(msg, result.unmatchedGames)
+                        _uiState.value = SyncUiState.Success(msg.toString(), result.unmatchedGames)
                     }
                     else -> {
                         _uiState.value = SyncUiState.Error("No games found. Check your Steam ID or Privacy Settings.")
@@ -95,11 +105,15 @@ class SyncViewModel(
                     _uiState.value = SyncUiState.Loading(progress, message)
                 }
                 if (result.importedCount >= 0) {
-                    val msg = if (result.importedCount > 0)
-                        "Successfully synced ${result.importedCount} games from GOG."
-                    else "GOG library up to date. No new games were added."
+                    val msg = StringBuilder("Successfully synced ${result.importedCount} games from GOG.")
+                    if (result.alreadyPresentCount > 0) {
+                        msg.append(" ${result.alreadyPresentCount} games were already in your library.")
+                    }
+                    if (result.ignoredCount > 0) {
+                        msg.append(" ${result.ignoredCount} games were ignored.")
+                    }
                     
-                    _uiState.value = SyncUiState.Success(msg, result.unmatchedGames)
+                    _uiState.value = SyncUiState.Success(msg.toString(), result.unmatchedGames)
                 } else {
                     _uiState.value = SyncUiState.Error("No games found. Ensure your profile is public.")
                 }
@@ -123,6 +137,62 @@ class SyncViewModel(
         }
     }
 
+    fun setShowUbisoftLogin(show: Boolean) {
+        _showUbisoftLogin.value = show
+    }
+
+    fun setShowBattleNetLogin(show: Boolean) {
+        _showBattleNetLogin.value = show
+    }
+
+    fun onUbisoftSessionCaptured(ticket: String, sessionId: String) {
+        _showUbisoftLogin.value = false
+        syncJob?.cancel()
+        syncJob = viewModelScope.launch {
+            _uiState.value = SyncUiState.Loading(0f, "Initializing Ubisoft Connect sync...")
+            try {
+                val result = gameRepository.syncUbisoftGames(ticket, sessionId) { progress, message ->
+                    _uiState.value = SyncUiState.Loading(progress, message)
+                }
+                val msg = StringBuilder("Successfully synced ${result.importedCount} games from Ubisoft Connect.")
+                if (result.alreadyPresentCount > 0) {
+                    msg.append(" ${result.alreadyPresentCount} games were already in your library.")
+                }
+                if (result.ignoredCount > 0) {
+                    msg.append(" ${result.ignoredCount} games were ignored.")
+                }
+                
+                _uiState.value = SyncUiState.Success(msg.toString(), result.unmatchedGames)
+            } catch (e: Exception) {
+                _uiState.value = SyncUiState.Error("Ubisoft sync failed: ${e.message}")
+            }
+        }
+    }
+
+    fun onBattleNetCookiesCaptured(cookies: String) {
+        _showBattleNetLogin.value = false
+        syncJob?.cancel()
+        syncJob = viewModelScope.launch {
+            _uiState.value = SyncUiState.Loading(0f, "Initializing Battle.net sync...")
+            try {
+                val result = gameRepository.syncBattleNetGames(cookies) { progress, message ->
+                    _uiState.value = SyncUiState.Loading(progress, message)
+                }
+                val msg = StringBuilder("Successfully synced ${result.importedCount} games from Battle.net.")
+                if (result.alreadyPresentCount > 0) {
+                    msg.append(" ${result.alreadyPresentCount} games were already in your library.")
+                }
+                if (result.ignoredCount > 0) {
+                    msg.append(" ${result.ignoredCount} games were ignored.")
+                }
+
+                _uiState.value = SyncUiState.Success(msg.toString(), result.unmatchedGames)
+            } catch (e: Exception) {
+                _uiState.value = SyncUiState.Error("Battle.net sync failed: ${e.message}")
+            }
+        }
+    }
+
     fun onEpicCodeCaptured(code: String) {
         _showEpicLogin.value = false
         syncJob?.cancel()
@@ -132,11 +202,15 @@ class SyncViewModel(
                 val result = gameRepository.syncEpicGames(code) { progress, message ->
                     _uiState.value = SyncUiState.Loading(progress, message)
                 }
-                val msg = if (result.importedCount > 0)
-                    "Successfully synced ${result.importedCount} games from Epic Games Store."
-                else "Epic Games library up to date. No new games were added."
+                val msg = StringBuilder("Successfully synced ${result.importedCount} games from Epic Games Store.")
+                if (result.alreadyPresentCount > 0) {
+                    msg.append(" ${result.alreadyPresentCount} games were already in your library.")
+                }
+                if (result.ignoredCount > 0) {
+                    msg.append(" ${result.ignoredCount} games were ignored.")
+                }
                 
-                _uiState.value = SyncUiState.Success(msg, result.unmatchedGames)
+                _uiState.value = SyncUiState.Success(msg.toString(), result.unmatchedGames)
             } catch (e: Exception) {
                 _uiState.value = SyncUiState.Error("Epic sync failed: ${e.message}")
             }
@@ -150,11 +224,13 @@ class SyncViewModel(
             val gogUser = _lastGogUsername.value
             
             if (steamId.isBlank() && gogUser.isBlank()) {
-                _uiState.value = SyncUiState.Error("No accounts connected. Please provide a Steam ID or GOG Username.")
+                _uiState.value = SyncUiState.Error("No accounts connected. Please provide credentials.")
                 return@launch
             }
 
             var totalImported = 0
+            var totalAlreadyPresent = 0
+            var totalIgnored = 0
             val allUnmatched = mutableListOf<UnmatchedGame>()
             
             try {
@@ -164,7 +240,11 @@ class SyncViewModel(
                     val steamResult = gameRepository.syncSteamGames(steamId) { progress, message ->
                         _uiState.value = SyncUiState.Loading(progress * 0.5f, "Steam: $message")
                     }
-                    if (steamResult.importedCount >= 0) totalImported += steamResult.importedCount
+                    if (steamResult.importedCount >= 0) {
+                        totalImported += steamResult.importedCount
+                        totalAlreadyPresent += steamResult.alreadyPresentCount
+                        totalIgnored += steamResult.ignoredCount
+                    }
                     allUnmatched.addAll(steamResult.unmatchedGames)
                 }
 
@@ -174,12 +254,22 @@ class SyncViewModel(
                     val gogResult = gameRepository.syncGogGames(gogUser) { progress, message ->
                         _uiState.value = SyncUiState.Loading(0.5f + (progress * 0.5f), "GOG: $message")
                     }
-                    if (gogResult.importedCount >= 0) totalImported += gogResult.importedCount
+                    if (gogResult.importedCount >= 0) {
+                        totalImported += gogResult.importedCount
+                        totalAlreadyPresent += gogResult.alreadyPresentCount
+                        totalIgnored += gogResult.ignoredCount
+                    }
                     allUnmatched.addAll(gogResult.unmatchedGames)
                 }
 
-                val msg = "Sync All complete. Total new games: $totalImported"
-                _uiState.value = SyncUiState.Success(msg, allUnmatched)
+                val msg = StringBuilder("Sync All complete. Total new games: $totalImported.")
+                if (totalAlreadyPresent > 0) {
+                    msg.append(" $totalAlreadyPresent games were already in your library.")
+                }
+                if (totalIgnored > 0) {
+                    msg.append(" $totalIgnored games were ignored.")
+                }
+                _uiState.value = SyncUiState.Success(msg.toString(), allUnmatched)
 
             } catch (e: Exception) {
                 _uiState.value = SyncUiState.Error("Sync All failed: ${e.message}")

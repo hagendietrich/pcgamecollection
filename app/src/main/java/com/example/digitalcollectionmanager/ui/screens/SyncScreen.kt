@@ -17,7 +17,9 @@ import androidx.compose.ui.unit.dp
 import com.example.digitalcollectionmanager.R
 import com.example.digitalcollectionmanager.data.model.IgnoredGame
 import com.example.digitalcollectionmanager.ui.components.AppTopBar
+import com.example.digitalcollectionmanager.ui.components.BattleNetAuthDialog
 import com.example.digitalcollectionmanager.ui.components.EpicAuthDialog
+import com.example.digitalcollectionmanager.ui.components.UbisoftAuthDialog
 import com.example.digitalcollectionmanager.ui.components.UnmatchedGameRow
 import com.example.digitalcollectionmanager.ui.viewmodel.SyncUiState
 import com.example.digitalcollectionmanager.ui.viewmodel.SyncViewModel
@@ -32,6 +34,8 @@ fun SyncScreen(
     val lastSteamId by viewModel.lastSteamId.collectAsState()
     val lastGogUsername by viewModel.lastGogUsername.collectAsState()
     val showEpicLogin by viewModel.showEpicLogin.collectAsState()
+    val showUbisoftLogin by viewModel.showUbisoftLogin.collectAsState()
+    val showBattleNetLogin by viewModel.showBattleNetLogin.collectAsState()
     val ignoredGames by viewModel.ignoredGames.collectAsState()
     val epicEmail by viewModel.epicEmail.collectAsState()
     val epicPassword by viewModel.epicPassword.collectAsState()
@@ -50,6 +54,24 @@ fun SyncScreen(
             password = epicPasswordInput,
             onCodeCaptured = { code -> viewModel.onEpicCodeCaptured(code) },
             onDismiss = { viewModel.setShowEpicLogin(false) }
+        )
+    }
+
+    if (showUbisoftLogin) {
+        UbisoftAuthDialog(
+            onSessionCaptured = { ticket, sessionId -> 
+                viewModel.onUbisoftSessionCaptured(ticket, sessionId) 
+            },
+            onDismiss = { viewModel.setShowUbisoftLogin(false) }
+        )
+    }
+
+    if (showBattleNetLogin) {
+        BattleNetAuthDialog(
+            onCookiesCaptured = { cookies ->
+                viewModel.onBattleNetCookiesCaptured(cookies)
+            },
+            onDismiss = { viewModel.setShowBattleNetLogin(false) }
         )
     }
 
@@ -282,6 +304,64 @@ fun SyncScreen(
                                 enabled = uiState !is SyncUiState.Loading
                             ) {
                                 Text("Connect Epic Account")
+                            }
+                        }
+                    }
+                }
+
+                item {
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("Ubisoft Connect Sync", style = MaterialTheme.typography.titleMedium)
+                                IconButton(onClick = { platformForIgnoreList = "Ubisoft" }) {
+                                    Icon(Icons.Default.VisibilityOff, contentDescription = "Manage Ignore List")
+                                }
+                            }
+                            Text(
+                                "Connect your Ubisoft account to sync your library. A secure login window will open.",
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier.padding(vertical = 8.dp)
+                            )
+                            Button(
+                                onClick = { viewModel.setShowUbisoftLogin(true) },
+                                modifier = Modifier.align(Alignment.End),
+                                enabled = uiState !is SyncUiState.Loading
+                            ) {
+                                Text("Connect Ubisoft Account")
+                            }
+                        }
+                    }
+                }
+
+                item {
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("Battle.net Sync", style = MaterialTheme.typography.titleMedium)
+                                IconButton(onClick = { platformForIgnoreList = "Battle.net" }) {
+                                    Icon(Icons.Default.VisibilityOff, contentDescription = "Manage Ignore List")
+                                }
+                            }
+                            Text(
+                                "Connect your Battle.net account to sync your library. A secure login window will open.",
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier.padding(vertical = 8.dp)
+                            )
+                            Button(
+                                onClick = { viewModel.setShowBattleNetLogin(true) },
+                                modifier = Modifier.align(Alignment.End),
+                                enabled = uiState !is SyncUiState.Loading
+                            ) {
+                                Text("Sync Battle.net")
                             }
                         }
                     }

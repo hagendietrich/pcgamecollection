@@ -1,0 +1,21 @@
+- `[x]` Update `SettingsRepository.kt` with Ubisoft preference keys and methods
+- `[x]` Create `UbisoftClient.kt` (Initial Basic Auth version - FAILED)
+- `[x]` Update `SyncViewModel.kt` (Initial version)
+- `[x]` Implement `syncUbisoftGames` in `GameRepository.kt`
+- `[x]` Update `SyncScreen.kt` (Initial version)
+- `[x]` Pivot to WebView Authentication
+- `[x]` Add Vigorous Logging to `UbisoftAuthWebView.kt`
+- `[x]` Fix Ubisoft WebView 403 Forbidden Error
+- `[x]` Fix Ubisoft ReCaptcha & 403
+- `[x]` Resolve Ubisoft Client Hint Block
+- `[x]` Resolve Ubisoft ReCaptcha & 403 (Child Window Sync)
+- `[x]` Finalize Ubisoft Session Capture (Header Interception)
+- `[x]` Update Ubisoft Library Endpoint (404 Fix Attempt 1)
+- `[x]` Update Ubisoft Library Endpoint (Aggregation API - 404 Fix Attempt 2)
+- `[x]` Fix Ubisoft 404 & AppID Discrepancy
+- `[x]` Fix Ubisoft Library 404 & 401 (Public Domain Sync)
+- `[x]` Consolidated Identity & Domain Fix
+    - `[x]` Standardize AppID to `f35adcb5...`
+    - `[x]` Consolidate domains to `public-ubiservices.ubi.com`
+    - `[x]` Update header suppression to use explicit origins
+    - `[ ]` Verify library import

@@ -61,11 +61,15 @@ class ImportViewModel(
                     _uiState.value = ImportUiState.Loading(progress, message)
                 }
                 
-                val msg = if (result.importedCount > 0)
-                    "Successfully imported ${result.importedCount} games from Playnite."
-                else "Playnite library checked. No new games were added."
+                val msg = StringBuilder("Successfully imported ${result.importedCount} games from Playnite.")
+                if (result.alreadyPresentCount > 0) {
+                    msg.append(" ${result.alreadyPresentCount} games were already in your library.")
+                }
+                if (result.ignoredCount > 0) {
+                    msg.append(" ${result.ignoredCount} games were ignored.")
+                }
                 
-                _uiState.value = ImportUiState.Success(msg, result.unmatchedGames)
+                _uiState.value = ImportUiState.Success(msg.toString(), result.unmatchedGames)
                 tempPlayniteGames = emptyList()
             } catch (e: Exception) {
                 _uiState.value = ImportUiState.Error("Playnite import failed: ${e.message}")
