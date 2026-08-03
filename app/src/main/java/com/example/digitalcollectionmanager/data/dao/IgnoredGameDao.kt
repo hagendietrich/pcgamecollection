@@ -15,6 +15,9 @@ interface IgnoredGameDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertIgnoredGame(game: IgnoredGame)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertIgnoredGames(games: List<IgnoredGame>)
+
     @Query("DELETE FROM ignored_games WHERE id = :id")
     suspend fun deleteIgnoredGame(id: Int)
 

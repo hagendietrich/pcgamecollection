@@ -143,7 +143,7 @@ Vertical grid of game covers:
 ---
 
 ## 11. Ideas for future features
-- Add online platforms: ubisoft, battle.net
+- Add online platforms: ubisoft
 
 
 ---
@@ -151,7 +151,7 @@ Vertical grid of game covers:
 ## 12. Project Plan Features Realized (post-inspection)
 - New game characteristic "Mode". Valid values: Singeplayer, Multiplayer, Co-op 
 - Filtering (visualized by a funnel in the top bar), based on labels, genres, mode
-- Advanced cloud sync (steam, gog, epic)
+- Advanced cloud sync (steam, gog, epic, battle.net)
 - Add a ignore_list for online titles to not sync, link it on SyncScreen
 - In the Resolve-Step show an option to add to blacklist instead of resolving
 - Save the epic e-mail and password

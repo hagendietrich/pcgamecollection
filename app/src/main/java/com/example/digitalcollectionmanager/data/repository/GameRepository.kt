@@ -9,6 +9,7 @@ import com.example.digitalcollectionmanager.data.api.UbisoftClient
 import com.example.digitalcollectionmanager.data.api.models.*
 import com.example.digitalcollectionmanager.data.dao.GameDao
 import com.example.digitalcollectionmanager.data.dao.IgnoredGameDao
+import com.example.digitalcollectionmanager.data.model.BackupData
 import com.example.digitalcollectionmanager.data.model.CompletionStatus
 import com.example.digitalcollectionmanager.data.model.Game
 import com.example.digitalcollectionmanager.data.model.IgnoredGame
@@ -1250,8 +1251,13 @@ class GameRepository(
      */
     suspend fun generateJsonContent(): String = withContext(Dispatchers.IO) {
         val games = gameDao.getAllGames().first()
-        val json = Json { prettyPrint = true }
-        json.encodeToString(games)
+        val ignoredGames = ignoredGameDao.getAllIgnoredGames().first()
+        val backup = BackupData(games = games, ignoredGames = ignoredGames)
+        val json = Json { 
+            prettyPrint = true
+            encodeDefaults = true 
+        }
+        json.encodeToString(backup)
     }
 
     /**
@@ -1259,11 +1265,23 @@ class GameRepository(
      */
     suspend fun importFromJson(jsonString: String) = withContext(Dispatchers.IO) {
         val json = Json { ignoreUnknownKeys = true; coerceInputValues = true }
-        val importedGames: List<Game> = json.decodeFromString(jsonString)
+        
+        val backup = try {
+            json.decodeFromString<BackupData>(jsonString)
+        } catch (e: Exception) {
+            // Legacy format: just a list of games
+            try {
+                val games: List<Game> = json.decodeFromString(jsonString)
+                BackupData(games = games)
+            } catch (e2: Exception) {
+                BackupData() // Empty or malformed
+            }
+        }
+
         val localGames = gameDao.getAllGames().first()
         
         // Deduplicate: Map imported games to existing local IDs where possible
-        val mergedGames = importedGames.map { imported ->
+        val mergedGames = backup.games.map { imported ->
             val existing = localGames.find { local ->
                 (imported.igdbId != null && local.igdbId == imported.igdbId) ||
                 (local.title.equals(imported.title, ignoreCase = true))
@@ -1275,9 +1293,6 @@ class GameRepository(
 
             if (existing != null) {
                 // Keep the database ID of the existing record to trigger an UPDATE instead of an INSERT
-                // If the existing game has a manual date, and the imported one doesn't, we might want to keep the manual one.
-                // But usually a JSON import/restore is meant to be a full state sync.
-                // We'll trust the JSON state (which includes the manual flag).
                 normalizedImported.copy(id = existing.id)
             } else {
                 // No match found, insert as a new game
@@ -1285,7 +1300,21 @@ class GameRepository(
             }
         }
         
-        gameDao.insertGames(mergedGames)
+        if (mergedGames.isNotEmpty()) {
+            gameDao.insertGames(mergedGames)
+        }
+
+        // Restore ignored games
+        if (backup.ignoredGames.isNotEmpty()) {
+            val existingIgnored = ignoredGameDao.getAllIgnoredGames().first()
+            val filteredIgnored = backup.ignoredGames.map { it.copy(id = 0) }.filter { imported ->
+                existingIgnored.none { it.platform == imported.platform && it.catalogItemId == imported.catalogItemId }
+            }
+            
+            if (filteredIgnored.isNotEmpty()) {
+                ignoredGameDao.insertIgnoredGames(filteredIgnored)
+            }
+        }
     }
 
     /**
