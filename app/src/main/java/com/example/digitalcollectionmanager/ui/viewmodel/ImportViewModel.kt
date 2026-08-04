@@ -19,6 +19,8 @@ import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import java.io.File
 import java.io.FileInputStream
+import java.io.FileNotFoundException
+import java.io.FileOutputStream
 
 class ImportViewModel(
     private val gameRepository: GameRepository,
@@ -33,6 +35,11 @@ class ImportViewModel(
 
     private val _hasAllFilesAccess = MutableStateFlow(false)
     val hasAllFilesAccess: StateFlow<Boolean> = _hasAllFilesAccess.asStateFlow()
+
+    val isWaydroid: Boolean = android.os.Build.MANUFACTURER.contains("waydroid", ignoreCase = true) || 
+                             android.os.Build.BRAND.contains("waydroid", ignoreCase = true) ||
+                             android.os.Build.PRODUCT.contains("waydroid", ignoreCase = true) ||
+                             android.os.Build.MODEL.contains("waydroid", ignoreCase = true)
 
     private var tempPlayniteGames: List<PlayniteGame> = emptyList()
 
@@ -150,12 +157,12 @@ class ImportViewModel(
             _uiState.value = ImportUiState.Loading(0.5f, "Generating JSON backup...")
             try {
                 val jsonContent = gameRepository.generateJsonContent()
-                contentResolver.openOutputStream(uri)?.use { outputStream ->
-                    outputStream.write(jsonContent.toByteArray())
-                }
+                writeFileContent(uri, contentResolver, jsonContent)
                 _uiState.value = ImportUiState.Success("Library exported successfully!")
             } catch (e: Exception) {
-                _uiState.value = ImportUiState.Error("Export failed: ${e.message}")
+                Log.e("ImportViewModel", "Export Error", e)
+                val errorMsg = "Export Error (${e::class.simpleName}): ${e.message ?: "Unknown error"}"
+                _uiState.value = ImportUiState.Error(errorMsg)
             }
         }
     }
@@ -177,14 +184,29 @@ class ImportViewModel(
     }
 
     /**
+     * Exposes the current library JSON for sharing.
+     */
+    suspend fun getBackupJson(): String {
+        return gameRepository.generateJsonContent()
+    }
+
+    private fun getExternalPathCandidates(relativePath: String): List<File> {
+        return listOf(
+            File("/storage/emulated/0/$relativePath"),
+            File("/sdcard/$relativePath"),
+            File(Environment.getExternalStorageDirectory(), relativePath),
+            File("/mnt/media_rw/0/$relativePath"),
+            File("/storage/self/primary/$relativePath")
+        ).distinctBy { it.absolutePath }
+    }
+
+    /**
      * Tiered file access strategy to bypass system crashes in containerized environments.
      */
     private fun readFileContent(uri: Uri, contentResolver: ContentResolver): String {
         Log.d("ImportViewModel", "Attempting tiered read for URI: $uri (Auth: ${uri.authority})")
-        val isManager = Environment.isExternalStorageManager()
-        Log.d("ImportViewModel", "All Files Access Status: $isManager")
-
-        // Tier 0: Direct Path Fallback (System Bypass for Waydroid)
+        
+        // Tier 0: Direct Path Fallback
         if (uri.authority == "com.android.externalstorage.documents" || uri.authority == "com.android.providers.downloads.documents") {
             val docId = uri.pathSegments.lastOrNull() ?: ""
             val relativePath = when {
@@ -194,24 +216,16 @@ class ImportViewModel(
             }
             
             if (relativePath != null) {
-                val candidates = listOf(
-                    File("/storage/emulated/0/$relativePath"),
-                    File("/sdcard/$relativePath"),
-                    File(Environment.getExternalStorageDirectory(), relativePath)
-                ).distinctBy { it.absolutePath }
-                
-                for (file in candidates) {
-                    Log.d("ImportViewModel", "Tier 0: Checking ${file.absolutePath}")
+                for (file in getExternalPathCandidates(relativePath)) {
+                    Log.d("ImportViewModel", "Tier 0 Read: Checking ${file.absolutePath}")
                     try {
                         if (file.exists()) {
                             val content = file.readText()
-                            Log.d("ImportViewModel", "Tier 0: SUCCESS via direct read")
+                            Log.d("ImportViewModel", "Tier 0 Read: SUCCESS via direct read")
                             return content
-                        } else {
-                            Log.d("ImportViewModel", "Tier 0: File does not exist: ${file.absolutePath}")
                         }
                     } catch (e: Exception) {
-                        Log.w("ImportViewModel", "Tier 0: Candidate ${file.absolutePath} failed: ${e.message}")
+                        Log.w("ImportViewModel", "Tier 0 Read: Candidate ${file.absolutePath} failed: ${e.message}")
                     }
                 }
             }
@@ -253,14 +267,67 @@ class ImportViewModel(
             throw e
         }
 
-        throw Exception("All file access methods failed. On Waydroid, please ensure 'All Files Access' is granted in settings to enable the system bypass.")
+        throw Exception("All file access methods failed. On Waydroid, please ensure 'All Files Access' is granted in settings.")
     }
 
-    /**
-     * Specifically handles the system-level NPE seen on Waydroid to provide a helpful error message.
-     */
-    private fun handleSystemNpe(e: NullPointerException): Nothing {
-        throw Exception("Waydroid System Error (NPE): The system container crashed while opening the file. Please grant 'All Files Access' in settings to enable the direct bypass.", e)
+    private fun writeFileContent(uri: Uri, contentResolver: ContentResolver, content: String) {
+        Log.d("ImportViewModel", "Attempting tiered write for URI: $uri (Auth: ${uri.authority})")
+
+        // Tier 0: Direct Path Fallback
+        if (uri.authority == "com.android.externalstorage.documents" || uri.authority == "com.android.providers.downloads.documents") {
+            val docId = uri.pathSegments.lastOrNull() ?: ""
+            val relativePath = when {
+                docId.startsWith("primary:") -> docId.substringAfter("primary:")
+                docId.startsWith("raw:") -> docId.substringAfter("raw:")
+                else -> null
+            }
+
+            if (relativePath != null) {
+                for (file in getExternalPathCandidates(relativePath)) {
+                    Log.d("ImportViewModel", "Tier 0 Write: Checking ${file.absolutePath}")
+                    try {
+                        file.parentFile?.mkdirs()
+                        file.writeText(content)
+                        Log.d("ImportViewModel", "Tier 0 Write: SUCCESS via direct write to ${file.absolutePath}")
+                        return
+                    } catch (e: Exception) {
+                        Log.w("ImportViewModel", "Tier 0 Write: Candidate ${file.absolutePath} failed: ${e.message}")
+                    }
+                }
+            }
+        }
+
+        // Tier 1: Standard openOutputStream
+        try {
+            contentResolver.openOutputStream(uri, "wt")?.use { outputStream ->
+                outputStream.write(content.toByteArray())
+                Log.d("ImportViewModel", "Write Success via Tier 1 (OutputStream)")
+                return
+            }
+        } catch (e: Exception) {
+            Log.w("ImportViewModel", "Tier 1 Write Failed: ${e.message}")
+            if (e is NullPointerException) handleSystemNpe(e)
+            if (e is FileNotFoundException && e.message?.contains("denied", ignoreCase = true) == true) handleSystemNpe(NullPointerException("Permission Denied (Wrapped)"))
+        }
+
+        // Tier 2: openFileDescriptor
+        try {
+            contentResolver.openFileDescriptor(uri, "wt")?.use { pfd ->
+                FileOutputStream(pfd.fileDescriptor).use { it.write(content.toByteArray()) }
+                Log.d("ImportViewModel", "Write Success via Tier 2 (FileDescriptor)")
+                return
+            }
+        } catch (e: Exception) {
+            Log.w("ImportViewModel", "Tier 2 Write Failed: ${e.message}")
+            if (e is NullPointerException) handleSystemNpe(e)
+            throw e
+        }
+
+        throw Exception("All file writing methods failed. On Waydroid, please ensure 'All Files Access' is granted in settings.")
+    }
+
+    private fun handleSystemNpe(e: Exception): Nothing {
+        throw Exception("Waydroid System Error (Identity): The system container failed to authorize the file operation. Please grant 'All Files Access' in settings to enable the direct bypass.", e)
     }
 
     fun wipeLibrary() {

@@ -8,13 +8,14 @@ import android.provider.Settings
 import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Warning
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -23,10 +24,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.core.content.FileProvider
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.viewModelScope
 import com.example.digitalcollectionmanager.R
 import com.example.digitalcollectionmanager.data.model.CompletionStatus
 import com.example.digitalcollectionmanager.ui.components.AppTopBar
@@ -34,6 +36,7 @@ import com.example.digitalcollectionmanager.ui.components.UnmatchedGameRow
 import com.example.digitalcollectionmanager.ui.viewmodel.ImportUiState
 import com.example.digitalcollectionmanager.ui.viewmodel.ImportViewModel
 import com.example.digitalcollectionmanager.ui.viewmodel.PlayniteImportState
+import kotlinx.coroutines.launch
 
 @Composable
 fun ImportScreen(
@@ -46,6 +49,7 @@ fun ImportScreen(
     val hasAllFilesAccess by viewModel.hasAllFilesAccess.collectAsState()
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
+    val coroutineScope = rememberCoroutineScope()
 
     var showWipeConfirm by remember { mutableStateOf(false) }
 
@@ -83,6 +87,35 @@ fun ImportScreen(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri ->
         uri?.let { viewModel.parsePlayniteJson(it, context.contentResolver) }
+    }
+
+    val shareLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { _ -> }
+
+    fun shareBackup() {
+        coroutineScope.launch {
+            try {
+                val json = viewModel.getBackupJson()
+                val tempFile = java.io.File(context.cacheDir, "dcm_backup_share.json")
+                tempFile.writeText(json)
+                
+                val contentUri = FileProvider.getUriForFile(
+                    context,
+                    "${context.packageName}.fileprovider",
+                    tempFile
+                )
+
+                val intent = Intent(Intent.ACTION_SEND).apply {
+                    type = "application/json"
+                    putExtra(Intent.EXTRA_STREAM, contentUri)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                shareLauncher.launch(Intent.createChooser(intent, "Share Backup JSON"))
+            } catch (e: Exception) {
+                Log.e("ImportScreen", "Share Error", e)
+            }
+        }
     }
 
     if (playniteImportState is PlayniteImportState.MappingRequired) {
@@ -186,7 +219,7 @@ fun ImportScreen(
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                                 // Add "Grant All Files Access" button if on Android 11+ and it likely failed due to permissions
                                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && 
-                                    (state.message.contains("All file access", ignoreCase = true) || state.message.contains("NPE", ignoreCase = true))) {
+                                    (viewModel.isWaydroid || state.message.contains("All file access", ignoreCase = true) || state.message.contains("NPE", ignoreCase = true))) {
                                     TextButton(onClick = { 
                                         val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
                                         intent.data = Uri.parse("package:" + context.packageName)
@@ -212,7 +245,7 @@ fun ImportScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 // Waydroid Compatibility Card
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                if (viewModel.isWaydroid && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                     item {
                         Card(
                             modifier = Modifier.fillMaxWidth(),
@@ -310,7 +343,8 @@ fun ImportScreen(
                             )
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.End
+                                horizontalArrangement = Arrangement.End,
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
                                 OutlinedButton(
                                     onClick = { 
@@ -326,9 +360,16 @@ fun ImportScreen(
                                 }
                                 Button(
                                     onClick = { jsonExportLauncher.launch("digital_collection_backup.json") },
-                                    enabled = uiState !is ImportUiState.Loading
+                                    enabled = uiState !is ImportUiState.Loading,
+                                    modifier = Modifier.padding(end = 8.dp)
                                 ) {
                                     Text("Export (JSON)")
+                                }
+                                IconButton(
+                                    onClick = { shareBackup() },
+                                    enabled = uiState !is ImportUiState.Loading
+                                ) {
+                                    Icon(Icons.Default.Share, contentDescription = "Share")
                                 }
                             }
                         }
