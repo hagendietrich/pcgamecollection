@@ -40,7 +40,7 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun updateColumnCount(count: Int) {
         context.dataStore.edit { preferences ->
-            preferences[PreferencesKeys.COLUMN_COUNT] = count.coerceIn(1, 10) // Keep it between 1 and 10
+            preferences[PreferencesKeys.COLUMN_COUNT] = count.coerceIn(1, 20) // Keep it between 1 and 20
         }
     }
 

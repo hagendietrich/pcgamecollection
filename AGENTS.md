@@ -20,11 +20,11 @@ Import der eigenen Spiele soll aus verschiedenen Quellen möglich sein wie:
 - **Bilder-Loading:** Coil (Asynchrones Laden von Cover-Bildern)
 
 ## Kern-Funktionen (Roadmap)
-1. [ ] Projekt-Setup & Basis-Datenklassen
-2. [ ] Steam Web API Integration (`GetOwnedGames`)
-3. [ ] Lokale Room-Datenbank & Repository-Pattern
-4. [ ] UI-Entwicklung: `HorizontalPager` für Cover-Flow
-5. [ ] Caching & Performance-Optimierung (Coil)
+1. [x] Projekt-Setup & Basis-Datenklassen
+2. [x] Steam Web API Integration (`GetOwnedGames`)
+3. [x] Lokale Room-Datenbank & Repository-Pattern
+4. [ ] UI-Entwicklung: Grid-basierte Library
+5. [x] Caching & Performance-Optimierung (Coil)
 
 ## Richtlinien für Code-Generierung
 - Nutze ausschließlich Jetpack Compose für die UI (keine XML-Layouts für Ansichten).

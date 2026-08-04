@@ -1264,6 +1264,10 @@ class GameRepository(
      * Imports games from a JSON string.
      */
     suspend fun importFromJson(jsonString: String) = withContext(Dispatchers.IO) {
+        if (jsonString.isBlank()) {
+            throw IllegalArgumentException("Import failed: The selected file is empty.")
+        }
+        
         val json = Json { ignoreUnknownKeys = true; coerceInputValues = true }
         
         val backup = try {
@@ -1280,6 +1284,8 @@ class GameRepository(
 
         val localGames = gameDao.getAllGames().first()
         
+        println("Importing ${backup.games.size} games and ${backup.ignoredGames.size} ignored games.")
+
         // Deduplicate: Map imported games to existing local IDs where possible
         val mergedGames = backup.games.map { imported ->
             val existing = localGames.find { local ->

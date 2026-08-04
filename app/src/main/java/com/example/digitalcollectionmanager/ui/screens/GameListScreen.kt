@@ -292,7 +292,7 @@ fun GameListScreen(
                         IconButton(onClick = {
                             viewModel.setColumnCount(
                                 (columnCount + 1).coerceAtMost(
-                                    10
+                                    20
                                 )
                             )
                         }) {

@@ -155,3 +155,6 @@ Vertical grid of game covers:
 - Add a ignore_list for online titles to not sync, link it on SyncScreen
 - In the Resolve-Step show an option to add to blacklist instead of resolving
 - Save the epic e-mail and password
+- Enhanced JSON export (includes ignore list, format-aware import)
+- Robust Waydroid support (tiered access, direct path fallback)
+- Added support for waydroid import

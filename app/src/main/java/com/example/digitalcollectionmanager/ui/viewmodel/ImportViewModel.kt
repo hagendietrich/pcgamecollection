@@ -1,9 +1,11 @@
 package com.example.digitalcollectionmanager.ui.viewmodel
 
-import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
 import android.content.ContentResolver
 import android.net.Uri
+import android.os.Environment
+import android.util.Log
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import com.example.digitalcollectionmanager.data.api.models.IgdbGame
 import com.example.digitalcollectionmanager.data.api.models.PlayniteGame
 import com.example.digitalcollectionmanager.data.model.CompletionStatus
@@ -15,6 +17,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
+import java.io.File
+import java.io.FileInputStream
 
 class ImportViewModel(
     private val gameRepository: GameRepository,
@@ -27,16 +31,26 @@ class ImportViewModel(
     private val _playniteImportState = MutableStateFlow<PlayniteImportState>(PlayniteImportState.Idle)
     val playniteImportState: StateFlow<PlayniteImportState> = _playniteImportState.asStateFlow()
 
+    private val _hasAllFilesAccess = MutableStateFlow(false)
+    val hasAllFilesAccess: StateFlow<Boolean> = _hasAllFilesAccess.asStateFlow()
+
     private var tempPlayniteGames: List<PlayniteGame> = emptyList()
 
     init {
+        checkPermissionStatus()
+    }
+
+    fun checkPermissionStatus() {
+        _hasAllFilesAccess.value = Environment.isExternalStorageManager()
     }
 
     fun parsePlayniteJson(uri: Uri, contentResolver: ContentResolver) {
         viewModelScope.launch {
-            _uiState.value = ImportUiState.Loading(0.2f, "Parsing Playnite JSON...")
+            _uiState.value = ImportUiState.Loading(0.2f, "Opening Playnite JSON...")
             try {
-                val jsonString = contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } ?: ""
+                val jsonString = readFileContent(uri, contentResolver)
+
+                _uiState.value = ImportUiState.Loading(0.4f, "Parsing JSON...")
                 val json = Json { ignoreUnknownKeys = true; coerceInputValues = true }
                 val games: List<PlayniteGame> = json.decodeFromString(jsonString)
                 
@@ -46,7 +60,9 @@ class ImportViewModel(
                 _playniteImportState.value = PlayniteImportState.MappingRequired(statuses)
                 _uiState.value = ImportUiState.Idle
             } catch (e: Exception) {
-                _uiState.value = ImportUiState.Error("Failed to parse Playnite JSON: ${e.message}")
+                Log.e("ImportViewModel", "Playnite Parse Error", e)
+                val errorMsg = "Playnite Parse Error (${e::class.simpleName}): ${e.message ?: "Unknown error"}"
+                _uiState.value = ImportUiState.Error(errorMsg)
             }
         }
     }
@@ -146,15 +162,105 @@ class ImportViewModel(
 
     fun importFromJson(uri: Uri, contentResolver: ContentResolver) {
         viewModelScope.launch {
-            _uiState.value = ImportUiState.Loading(0.3f, "Reading JSON file...")
+            _uiState.value = ImportUiState.Loading(0.3f, "Opening backup file...")
             try {
-                val jsonString = contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } ?: ""
+                val jsonString = readFileContent(uri, contentResolver)
+
                 gameRepository.importFromJson(jsonString)
                 _uiState.value = ImportUiState.Success("Library imported successfully!")
             } catch (e: Exception) {
-                _uiState.value = ImportUiState.Error("Import failed: ${e.message}")
+                Log.e("ImportViewModel", "Import Error", e)
+                val errorMsg = "Import Error (${e::class.simpleName}): ${e.message ?: "Unknown error"}"
+                _uiState.value = ImportUiState.Error(errorMsg)
             }
         }
+    }
+
+    /**
+     * Tiered file access strategy to bypass system crashes in containerized environments.
+     */
+    private fun readFileContent(uri: Uri, contentResolver: ContentResolver): String {
+        Log.d("ImportViewModel", "Attempting tiered read for URI: $uri (Auth: ${uri.authority})")
+        val isManager = Environment.isExternalStorageManager()
+        Log.d("ImportViewModel", "All Files Access Status: $isManager")
+
+        // Tier 0: Direct Path Fallback (System Bypass for Waydroid)
+        if (uri.authority == "com.android.externalstorage.documents" || uri.authority == "com.android.providers.downloads.documents") {
+            val docId = uri.pathSegments.lastOrNull() ?: ""
+            val relativePath = when {
+                docId.startsWith("primary:") -> docId.substringAfter("primary:")
+                docId.startsWith("raw:") -> docId.substringAfter("raw:")
+                else -> null
+            }
+            
+            if (relativePath != null) {
+                val candidates = listOf(
+                    File("/storage/emulated/0/$relativePath"),
+                    File("/sdcard/$relativePath"),
+                    File(Environment.getExternalStorageDirectory(), relativePath)
+                ).distinctBy { it.absolutePath }
+                
+                for (file in candidates) {
+                    Log.d("ImportViewModel", "Tier 0: Checking ${file.absolutePath}")
+                    try {
+                        if (file.exists()) {
+                            val content = file.readText()
+                            Log.d("ImportViewModel", "Tier 0: SUCCESS via direct read")
+                            return content
+                        } else {
+                            Log.d("ImportViewModel", "Tier 0: File does not exist: ${file.absolutePath}")
+                        }
+                    } catch (e: Exception) {
+                        Log.w("ImportViewModel", "Tier 0: Candidate ${file.absolutePath} failed: ${e.message}")
+                    }
+                }
+            }
+        }
+
+        // Tier 1: openAssetFileDescriptor
+        try {
+            contentResolver.openAssetFileDescriptor(uri, "r")?.use { afd ->
+                Log.d("ImportViewModel", "Read Success via Tier 1 (AssetFileDescriptor)")
+                return FileInputStream(afd.fileDescriptor).bufferedReader().use { it.readText() }
+            }
+        } catch (e: Exception) {
+            Log.w("ImportViewModel", "Tier 1 Failed: ${e.message}")
+            if (e is NullPointerException) handleSystemNpe(e)
+        }
+
+        // Tier 2: acquireContentProviderClient
+        try {
+            contentResolver.acquireContentProviderClient(uri)?.use { client ->
+                client.openFile(uri, "r")?.use { pfd ->
+                    Log.d("ImportViewModel", "Read Success via Tier 2 (Direct Client)")
+                    return FileInputStream(pfd.fileDescriptor).bufferedReader().use { it.readText() }
+                }
+            }
+        } catch (e: Exception) {
+            Log.w("ImportViewModel", "Tier 2 Failed: ${e.message}")
+            if (e is NullPointerException) handleSystemNpe(e)
+        }
+
+        // Tier 3: Standard openFileDescriptor
+        try {
+            contentResolver.openFileDescriptor(uri, "r")?.use { pfd ->
+                Log.d("ImportViewModel", "Read Success via Tier 3 (FileDescriptor)")
+                return FileInputStream(pfd.fileDescriptor).bufferedReader().use { it.readText() }
+            }
+        } catch (e: Exception) {
+            Log.w("ImportViewModel", "Tier 3 Failed: ${e.message}")
+            if (e is NullPointerException) handleSystemNpe(e)
+            throw e
+        }
+
+        throw Exception("All file access methods failed. On Waydroid, please ensure 'All Files Access' is granted in settings to enable the system bypass.")
+    }
+
+    /**
+     * Specifically handles the system-level NPE seen on Waydroid to provide a helpful error message.
+     */
+    private fun handleSystemNpe(e: NullPointerException): Nothing {
+        throw Exception("Waydroid System Error (NPE): The system container crashed while opening the file. Please grant 'All Files Access' in settings to enable the direct bypass.", e)
     }
 
     fun wipeLibrary() {
