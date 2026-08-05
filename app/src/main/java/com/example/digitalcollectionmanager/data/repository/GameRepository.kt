@@ -1237,10 +1237,29 @@ class GameRepository(
         // Handle YYYY-M-D and variants
         val parts = trimmed.split("-", "/", ".")
         if (parts.size == 3) {
-            val y = parts[0].padStart(4, '2').takeLast(4) // Assume YYYY
-            val m = parts[1].padStart(2, '0')
-            val d = parts[2].padStart(2, '0')
-            return "$y-$m-$d"
+            // Check if year is first (YYYY-MM-DD) or last (DD.MM.YYYY)
+            val p0 = parts[0]
+            val p2 = parts[2]
+            
+            return if (p0.length == 4) {
+                // YYYY-MM-DD
+                val y = p0
+                val m = parts[1].padStart(2, '0')
+                val d = p2.padStart(2, '0')
+                "$y-$m-$d"
+            } else if (p2.length == 4) {
+                // DD-MM-YYYY
+                val y = p2
+                val m = parts[1].padStart(2, '0')
+                val d = p0.padStart(2, '0')
+                "$y-$m-$d"
+            } else {
+                // Fallback to existing logic if ambiguous
+                val y = p0.padStart(4, '2').takeLast(4)
+                val m = parts[1].padStart(2, '0')
+                val d = p2.padStart(2, '0')
+                "$y-$m-$d"
+            }
         }
         
         return trimmed

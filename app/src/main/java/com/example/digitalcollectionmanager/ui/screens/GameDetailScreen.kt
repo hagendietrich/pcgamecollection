@@ -1,6 +1,7 @@
 package com.example.digitalcollectionmanager.ui.screens
 
 import android.content.Intent
+import android.content.res.Configuration
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTransformGestures
@@ -26,6 +27,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -52,6 +54,8 @@ fun GameDetailScreen(
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
     val scrollState = rememberScrollState()
+    val configuration = LocalConfiguration.current
+    val isWidescreen = configuration.screenWidthDp > 840 || (configuration.orientation == Configuration.ORIENTATION_LANDSCAPE && configuration.screenWidthDp > 480)
     
     var fullScreenImageUrl by remember { mutableStateOf<String?>(null) }
 
@@ -87,21 +91,19 @@ fun GameDetailScreen(
             }
             is GameDetailUiState.Success -> {
                 val game = state.game
-                Box(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
-                    Column(
+                
+                if (isWidescreen) {
+                    Row(
                         modifier = Modifier
                             .fillMaxSize()
-                            .verticalScroll(scrollState)
+                            .padding(innerPadding)
                     ) {
-                        // Parallax Header (Screenshots)
+                        // Screenshots Column
                         Box(
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .height(300.dp)
-                                .graphicsLayer {
-                                    translationY = scrollState.value * 0.5f
-                                    alpha = (1f - (scrollState.value / 600f)).coerceIn(0f, 1f)
-                                }
+                                .weight(1.2f)
+                                .fillMaxHeight()
+                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
                         ) {
                             if (game.screenshotUrls.isNotEmpty()) {
                                 val pagerState = rememberPagerState(pageCount = { game.screenshotUrls.size })
@@ -112,10 +114,12 @@ fun GameDetailScreen(
                                     AsyncImage(
                                         model = game.screenshotUrls[page],
                                         contentDescription = "Screenshot ${page + 1}",
-                                        modifier = Modifier.fillMaxSize().clickable { 
-                                            fullScreenImageUrl = game.screenshotUrls[page]
-                                        },
-                                        contentScale = ContentScale.Crop
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .clickable { 
+                                                fullScreenImageUrl = game.screenshotUrls[page]
+                                            },
+                                        contentScale = ContentScale.Fit // Use Fit in widescreen to avoid distortion
                                     )
                                 }
                                 
@@ -123,20 +127,20 @@ fun GameDetailScreen(
                                 if (game.screenshotUrls.size > 1) {
                                     Row(
                                         Modifier
-                                            .height(24.dp)
+                                            .height(32.dp)
                                             .fillMaxWidth()
                                             .align(Alignment.BottomCenter)
-                                            .padding(bottom = 8.dp),
+                                            .padding(bottom = 12.dp),
                                         horizontalArrangement = Arrangement.Center
                                     ) {
                                         repeat(game.screenshotUrls.size) { iteration ->
-                                            val color = if (pagerState.currentPage == iteration) Color.White else Color.White.copy(alpha = 0.5f)
+                                            val color = if (pagerState.currentPage == iteration) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
                                             Box(
                                                 modifier = Modifier
-                                                    .padding(2.dp)
+                                                    .padding(3.dp)
                                                     .clip(CircleShape)
                                                     .background(color)
-                                                    .size(8.dp)
+                                                    .size(10.dp)
                                             )
                                         }
                                     }
@@ -145,153 +149,110 @@ fun GameDetailScreen(
                                 AsyncImage(
                                     model = game.coverImageUrl,
                                     contentDescription = null,
-                                    modifier = Modifier.fillMaxSize().clickable { 
-                                        fullScreenImageUrl = game.coverImageUrl
-                                    },
-                                    contentScale = ContentScale.Crop
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .clickable { 
+                                            fullScreenImageUrl = game.coverImageUrl
+                                        },
+                                    contentScale = ContentScale.Fit
                                 )
                             }
                         }
 
-                        // Content Body
+                        // Details Column
                         Surface(
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight(),
                             color = MaterialTheme.colorScheme.surface,
-                            tonalElevation = 2.dp
+                            tonalElevation = 1.dp
                         ) {
-                            Column(modifier = Modifier.padding(20.dp)) {
-                                // Basic Info Row (Rating & Date)
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        if (game.userRating != null) {
-                                            Icon(Icons.Default.Star, contentDescription = "User Rating", tint = Color(0xFFFFD700), modifier = Modifier.size(18.dp))
-                                            Text(
-                                                text = stringResource(R.string.rating_users) + " ${game.userRating.roundToInt()}%",
-                                                style = MaterialTheme.typography.titleMedium,
-                                                modifier = Modifier.padding(start = 4.dp, end = 12.dp)
-                                            )
-                                        }
-                                        if (game.criticRating != null) {
-                                            Icon(Icons.Default.Star, contentDescription = "Critic Rating", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
-                                            Text(
-                                                text = stringResource(R.string.rating_critics) + " ${game.criticRating.roundToInt()}%",
-                                                style = MaterialTheme.typography.titleMedium,
-                                                modifier = Modifier.padding(start = 4.dp)
-                                            )
-                                        }
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .verticalScroll(rememberScrollState())
+                                    .padding(24.dp)
+                            ) {
+                                GameDetailsContent(game, context)
+                            }
+                        }
+                    }
+                } else {
+                    Box(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .verticalScroll(scrollState)
+                        ) {
+                            // Parallax Header (Screenshots)
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .aspectRatio(16f / 9f) // Use aspect ratio instead of fixed height
+                                    .graphicsLayer {
+                                        translationY = scrollState.value * 0.5f
+                                        alpha = (1f - (scrollState.value / 600f)).coerceIn(0f, 1f)
                                     }
-                                    if (game.releaseDate != null) {
-                                        Text(
-                                            text = game.releaseDate,
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = MaterialTheme.colorScheme.secondary
+                            ) {
+                                if (game.screenshotUrls.isNotEmpty()) {
+                                    val pagerState = rememberPagerState(pageCount = { game.screenshotUrls.size })
+                                    HorizontalPager(
+                                        state = pagerState,
+                                        modifier = Modifier.fillMaxSize()
+                                    ) { page ->
+                                        AsyncImage(
+                                            model = game.screenshotUrls[page],
+                                            contentDescription = "Screenshot ${page + 1}",
+                                            modifier = Modifier.fillMaxSize().clickable { 
+                                                fullScreenImageUrl = game.screenshotUrls[page]
+                                            },
+                                            contentScale = ContentScale.Crop
                                         )
                                     }
-                                }
-
-                                Spacer(modifier = Modifier.height(16.dp))
-
-                                // Companies
-                                if (game.developers.isNotEmpty()) {
-                                    Text(
-                                        text = "Developed by: ${game.developers.joinToString(", ")}",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                                if (game.publishers.isNotEmpty()) {
-                                    Text(
-                                        text = "Published by: ${game.publishers.joinToString(", ")}",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-
-                                Spacer(modifier = Modifier.height(24.dp))
-
-                                // Store Links
-                                if (game.storeUrls.isNotEmpty() || !game.igdbUrl.isNullOrBlank()) {
-                                    Text("Official Links", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                                    OptInFlowRow(modifier = Modifier.padding(top = 8.dp)) {
-                                        game.storeUrls.forEach { (name, url) ->
-                                            AssistChip(
-                                                onClick = { 
-                                                    try {
-                                                        context.startActivity(Intent(Intent.ACTION_VIEW, url.toUri())) 
-                                                    } catch (e: Exception) {
-                                                        e.printStackTrace()
-                                                    }
-                                                },
-                                                label = { Text(name) },
-                                                leadingIcon = { Icon(Icons.Default.Store, contentDescription = null, modifier = Modifier.size(18.dp)) }
-                                            )
-                                        }
-                                        if (!game.igdbUrl.isNullOrBlank()) {
-                                            AssistChip(
-                                                onClick = { 
-                                                    try {
-                                                        context.startActivity(Intent(Intent.ACTION_VIEW, game.igdbUrl.toUri())) 
-                                                    } catch (e: Exception) {
-                                                        e.printStackTrace()
-                                                    }
-                                                },
-                                                label = { Text("IGDB") },
-                                                leadingIcon = { Icon(Icons.Default.Language, contentDescription = null, modifier = Modifier.size(18.dp)) }
-                                            )
+                                    
+                                    // Pager Indicators
+                                    if (game.screenshotUrls.size > 1) {
+                                        Row(
+                                            Modifier
+                                                .height(24.dp)
+                                                .fillMaxWidth()
+                                                .align(Alignment.BottomCenter)
+                                                .padding(bottom = 8.dp),
+                                            horizontalArrangement = Arrangement.Center
+                                        ) {
+                                            repeat(game.screenshotUrls.size) { iteration ->
+                                                val color = if (pagerState.currentPage == iteration) Color.White else Color.White.copy(alpha = 0.5f)
+                                                Box(
+                                                    modifier = Modifier
+                                                        .padding(2.dp)
+                                                        .clip(CircleShape)
+                                                        .background(color)
+                                                        .size(8.dp)
+                                                )
+                                            }
                                         }
                                     }
-                                    Spacer(modifier = Modifier.height(24.dp))
-                                }
-
-                                // Summary
-                                if (!game.summary.isNullOrBlank()) {
-                                    Text(
-                                        text = "About",
-                                        style = MaterialTheme.typography.titleLarge,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                    Text(
-                                        text = game.summary,
-                                        style = MaterialTheme.typography.bodyLarge,
-                                        modifier = Modifier.padding(top = 8.dp),
-                                        textAlign = TextAlign.Justify
+                                } else {
+                                    AsyncImage(
+                                        model = game.coverImageUrl,
+                                        contentDescription = null,
+                                        modifier = Modifier.fillMaxSize().clickable { 
+                                            fullScreenImageUrl = game.coverImageUrl
+                                        },
+                                        contentScale = ContentScale.Crop
                                     )
                                 }
+                            }
 
-                                Spacer(modifier = Modifier.height(24.dp))
-
-                                // Genres & Themes
-                                if (game.genres.isNotEmpty() || game.themes.isNotEmpty()) {
-                                    Text("Categories", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                                    OptInFlowRow(modifier = Modifier.padding(top = 8.dp)) {
-                                        game.genres.forEach { genre ->
-                                            SuggestionChip(onClick = {}, label = { Text(genre) })
-                                        }
-                                        game.themes.forEach { theme ->
-                                            SuggestionChip(onClick = {}, label = { Text(theme) }, colors = SuggestionChipDefaults.suggestionChipColors(containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.4f)))
-                                        }
-                                    }
+                            // Content Body
+                            Surface(
+                                modifier = Modifier.fillMaxWidth(),
+                                color = MaterialTheme.colorScheme.surface,
+                                tonalElevation = 2.dp
+                            ) {
+                                Column(modifier = Modifier.padding(20.dp)) {
+                                    GameDetailsContent(game, context)
                                 }
-
-                                Spacer(modifier = Modifier.height(32.dp))
-
-                                // Date Added
-                                val dateAddedStr = remember(game.dateAdded) {
-                                    SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(game.dateAdded))
-                                }
-                                Text(
-                                    text = "Date Added: $dateAddedStr",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                                    modifier = Modifier.fillMaxWidth(),
-                                    textAlign = TextAlign.Center
-                                )
-
-                                Spacer(modifier = Modifier.height(64.dp))
                             }
                         }
                     }
@@ -352,6 +313,145 @@ fun GameDetailScreen(
             }
         }
     }
+}
+
+@Composable
+fun GameDetailsContent(
+    game: com.example.digitalcollectionmanager.data.model.Game,
+    context: android.content.Context
+) {
+    // Basic Info Row (Rating & Date)
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (game.userRating != null) {
+                Icon(Icons.Default.Star, contentDescription = "User Rating", tint = Color(0xFFFFD700), modifier = Modifier.size(18.dp))
+                Text(
+                    text = stringResource(R.string.rating_users) + " ${game.userRating.roundToInt()}%",
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.padding(start = 4.dp, end = 12.dp)
+                )
+            }
+            if (game.criticRating != null) {
+                Icon(Icons.Default.Star, contentDescription = "Critic Rating", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                Text(
+                    text = stringResource(R.string.rating_critics) + " ${game.criticRating.roundToInt()}%",
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.padding(start = 4.dp)
+                )
+            }
+        }
+        if (game.releaseDate != null) {
+            Text(
+                text = game.releaseDate,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.secondary
+            )
+        }
+    }
+
+    Spacer(modifier = Modifier.height(16.dp))
+
+    // Companies
+    if (game.developers.isNotEmpty()) {
+        Text(
+            text = "Developed by: ${game.developers.joinToString(", ")}",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+    if (game.publishers.isNotEmpty()) {
+        Text(
+            text = "Published by: ${game.publishers.joinToString(", ")}",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+
+    Spacer(modifier = Modifier.height(24.dp))
+
+    // Store Links
+    if (game.storeUrls.isNotEmpty() || !game.igdbUrl.isNullOrBlank()) {
+        Text("Official Links", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+        OptInFlowRow(modifier = Modifier.padding(top = 8.dp)) {
+            game.storeUrls.forEach { (name, url) ->
+                AssistChip(
+                    onClick = { 
+                        try {
+                            context.startActivity(Intent(Intent.ACTION_VIEW, url.toUri())) 
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                        }
+                    },
+                    label = { Text(name) },
+                    leadingIcon = { Icon(Icons.Default.Store, contentDescription = null, modifier = Modifier.size(18.dp)) }
+                )
+            }
+            if (!game.igdbUrl.isNullOrBlank()) {
+                AssistChip(
+                    onClick = { 
+                        try {
+                            context.startActivity(Intent(Intent.ACTION_VIEW, game.igdbUrl.toUri())) 
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                        }
+                    },
+                    label = { Text("IGDB") },
+                    leadingIcon = { Icon(Icons.Default.Language, contentDescription = null, modifier = Modifier.size(18.dp)) }
+                )
+            }
+        }
+        Spacer(modifier = Modifier.height(24.dp))
+    }
+
+    // Summary
+    if (!game.summary.isNullOrBlank()) {
+        Text(
+            text = "About",
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold
+        )
+        Text(
+            text = game.summary,
+            style = MaterialTheme.typography.bodyLarge,
+            modifier = Modifier.padding(top = 8.dp),
+            textAlign = TextAlign.Justify
+        )
+    }
+
+    Spacer(modifier = Modifier.height(24.dp))
+
+    // Genres & Themes
+    if (game.genres.isNotEmpty() || game.themes.isNotEmpty()) {
+        Text("Categories", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+        OptInFlowRow(modifier = Modifier.padding(top = 8.dp)) {
+            game.genres.forEach { genre ->
+                SuggestionChip(onClick = {}, label = { Text(genre) })
+            }
+            game.themes.forEach { theme ->
+                SuggestionChip(onClick = {}, label = { Text(theme) }, colors = SuggestionChipDefaults.suggestionChipColors(containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.4f)))
+            }
+        }
+    }
+
+    Spacer(modifier = Modifier.height(32.dp))
+
+    // Date Added
+    val dateAddedStr = remember(game.dateAdded) {
+        SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(game.dateAdded))
+    }
+    Text(
+        text = "Date Added: $dateAddedStr",
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+        modifier = Modifier.fillMaxWidth(),
+        textAlign = TextAlign.Center
+    )
+
+    Spacer(modifier = Modifier.height(64.dp))
 }
 
 @OptIn(ExperimentalLayoutApi::class)

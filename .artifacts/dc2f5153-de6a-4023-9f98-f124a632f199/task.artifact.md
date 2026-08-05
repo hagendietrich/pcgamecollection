@@ -1,0 +1,8 @@
+- [x] Update build configuration for testing
+    - [x] Add testing libraries to `libs.versions.toml`
+    - [x] Add test dependencies to `app/build.gradle.kts`
+- [x] Implement unit tests
+    - [x] `GameRepositoryTest.kt` (Title matching, normalization)
+    - [x] `GameListViewModelTest.kt` (Filtering, sorting, selection)
+    - [x] `IgdbClientTest.kt` (URL logic, basic API mapping)
+- [x] Verify all tests pass

@@ -9,8 +9,8 @@ import io.ktor.http.*
 import io.ktor.serialization.kotlinx.json.*
 import kotlinx.serialization.json.Json
 
-class IgdbClient {
-    private val client = HttpClient {
+class IgdbClient(
+    private val client: HttpClient = HttpClient {
         install(ContentNegotiation) {
             json(Json {
                 ignoreUnknownKeys = true
@@ -18,7 +18,7 @@ class IgdbClient {
             })
         }
     }
-
+) {
     private var accessToken: String? = null
 
     suspend fun authenticate(clientId: String, clientSecret: String): Boolean {
