@@ -267,14 +267,14 @@ fun GameListScreen(
                                     }
                                 )
                                 DropdownMenuItem(
-                                    text = { Text("Date Added (Newest First)") },
+                                    text = { Text(stringResource(R.string.sort_by_date_added_desc)) },
                                     onClick = {
                                         viewModel.setSortOrder(SortOrder.DATE_ADDED_DESC); showSortMenu =
                                         false
                                     }
                                 )
                                 DropdownMenuItem(
-                                    text = { Text("Date Added (Oldest First)") },
+                                    text = { Text(stringResource(R.string.sort_by_date_added_asc)) },
                                     onClick = {
                                         viewModel.setSortOrder(SortOrder.DATE_ADDED_ASC); showSortMenu =
                                         false
