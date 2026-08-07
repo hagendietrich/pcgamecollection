@@ -1,4 +1,4 @@
-package com.example.digitalcollectionmanager.data.api
+package com.github.hagendietrich.pcgamecollection.data.api
 
 import io.ktor.client.*
 import io.ktor.client.engine.mock.*

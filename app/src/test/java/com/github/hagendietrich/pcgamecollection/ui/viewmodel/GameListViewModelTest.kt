@@ -1,9 +1,9 @@
-package com.example.digitalcollectionmanager.ui.viewmodel
+package com.github.hagendietrich.pcgamecollection.ui.viewmodel
 
 import app.cash.turbine.test
-import com.example.digitalcollectionmanager.data.model.*
-import com.example.digitalcollectionmanager.data.repository.GameRepository
-import com.example.digitalcollectionmanager.data.repository.SettingsRepository
+import com.github.hagendietrich.pcgamecollection.data.model.*
+import com.github.hagendietrich.pcgamecollection.data.repository.GameRepository
+import com.github.hagendietrich.pcgamecollection.data.repository.SettingsRepository
 import io.mockk.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi

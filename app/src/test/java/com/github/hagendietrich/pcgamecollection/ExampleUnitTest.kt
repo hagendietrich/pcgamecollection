@@ -1,4 +1,4 @@
-package com.example.digitalcollectionmanager
+package com.github.hagendietrich.pcgamecollection
 
 import org.junit.Test
 

@@ -1,8 +1,8 @@
-package com.example.digitalcollectionmanager.data.repository
+package com.github.hagendietrich.pcgamecollection.data.repository
 
-import com.example.digitalcollectionmanager.data.api.*
-import com.example.digitalcollectionmanager.data.dao.GameDao
-import com.example.digitalcollectionmanager.data.dao.IgnoredGameDao
+import com.github.hagendietrich.pcgamecollection.data.api.*
+import com.github.hagendietrich.pcgamecollection.data.dao.GameDao
+import com.github.hagendietrich.pcgamecollection.data.dao.IgnoredGameDao
 import io.mockk.mockk
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -72,9 +72,9 @@ class GameRepositoryTest {
     @Test
     fun `mapIgdbGameModes maps various strings correctly`() {
         val modes = listOf(
-            mockk<com.example.digitalcollectionmanager.data.api.models.IgdbGameMode> { io.mockk.every { name } returns "Single player" },
-            mockk<com.example.digitalcollectionmanager.data.api.models.IgdbGameMode> { io.mockk.every { name } returns "Massively Multiplayer Online (MMO)" },
-            mockk<com.example.digitalcollectionmanager.data.api.models.IgdbGameMode> { io.mockk.every { name } returns "Co-operative" }
+            mockk<com.github.hagendietrich.pcgamecollection.data.api.models.IgdbGameMode> { io.mockk.every { name } returns "Single player" },
+            mockk<com.github.hagendietrich.pcgamecollection.data.api.models.IgdbGameMode> { io.mockk.every { name } returns "Massively Multiplayer Online (MMO)" },
+            mockk<com.github.hagendietrich.pcgamecollection.data.api.models.IgdbGameMode> { io.mockk.every { name } returns "Co-operative" }
         )
         val result = repository.mapIgdbGameModes(modes)
         assertEquals(listOf("Singleplayer", "Multiplayer", "Co-op"), result)
