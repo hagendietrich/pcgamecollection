@@ -6,11 +6,11 @@ plugins {
 }
 
 android {
-    namespace = "com.example.digitalcollectionmanager"
+    namespace = "com.github.hagendietrich.pcgamecollection"
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "com.example.digitalcollectionmanager"
+        applicationId = "com.github.hagendietrich.pcgamecollection"
         minSdk = 31
         targetSdk = 36
         versionCode = 1

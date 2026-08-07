@@ -144,6 +144,7 @@ Vertical grid of game covers:
 
 ## 11. Ideas for future features
 - Add online platforms: ubisoft
+- Datenschutzerklärung
 
 
 ---

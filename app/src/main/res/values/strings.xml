@@ -1,11 +1,22 @@
 <resources>
-    <string name="app_name">Digital Collection Manager</string>
+    <string name="app_name">PC Game Collection</string>
     <string name="menu_my_games">My Games</string>
     <string name="menu_add_game">Add Game</string>
     <string name="menu_sync">Cloud Sync</string>
     <string name="menu_import">Import/Export Games</string>
     <string name="import_export_title">Import/Export</string>
     <string name="menu_settings">Settings (IGDB)</string>
+    <string name="menu_about">About</string>
+    <string name="about_title">About</string>
+    <string name="about_donate">Donate via PayPal</string>
+    <string name="about_license_title">License</string>
+    <string name="about_privacy_title">Data Privacy (GDPR)</string>
+    <string name="about_privacy_content">This app is designed with privacy in mind. All your collection data, including your API keys and game library, is stored locally on your device in an encrypted or private database. No data is ever sent to our servers, as we don\'t have any. The app only communicates with external services (like IGDB, Steam, etc.) using the API keys you provide, and only to fetch game information or sync your owned games. For more information, you can inspect the open-source code on GitHub.</string>
+    <string name="about_impressum_title">Impressum</string>
+    <string name="impressum_name">Your Name</string>
+    <string name="impressum_address">Your Address</string>
+    <string name="impressum_email">your.email@example.com</string>
+    <string name="paypal_me_id">YOUR_PAYPAL_ID</string>
     <string name="library_title">My Collection</string>
     <string name="library_empty">Your collection is empty. Tap + to add games!</string>
     <string name="add_game_title">Add New Game</string>
@@ -32,7 +43,7 @@
     <string name="sync_all">Sync All Accounts</string>
     <string name="rating_users">Users:</string>
     <string name="rating_critics">Critics:</string>
-    <string name="setup_welcome">Welcome to Digital Collection Manager</string>
+    <string name="setup_welcome">Welcome to your PC Game Collection</string>
     <string name="setup_update">Update Credentials</string>
     <string name="setup_instruction">To search for games, you need to provide your IGDB API credentials (from Twitch Developer Portal).</string>
     <string name="setup_client_id">Client ID</string>
@@ -40,6 +51,9 @@
     <string name="setup_steam_api_key">Steam API Key (Optional)</string>
     <string name="setup_connect">Connect to IGDB</string>
     <string name="setup_save">Save Changes</string>
+    <string name="setup_help_igdb_title">How to get IGDB credentials?</string>
+    <string name="setup_help_igdb_content">1. Go to the Twitch Developer Portal (https://dev.twitch.tv/console).\n2. Log in with your Twitch account.\n3. Register a new application (e.g., \"PC Game Collection\").\n4. Set the OAuth Redirect URL to \"http://localhost\".\n5. Category: \"Application Integration\".\n6. Once created, you will see your Client ID.\n7. Click \"New Secret\" to generate your Client Secret. **Keep it safe!**</string>
     <string name="setup_error_empty">Please enter both Client ID and Client Secret</string>
     <string name="setup_error_invalid">Invalid credentials. Please check your Client ID and Secret.</string>
+    <string name="unlicense_text">This is free and unencumbered software released into the public domain.\n\nAnyone is free to copy, modify, publish, use, compile, sell, or distribute this software, either in source code form or as a compiled binary, for any purpose, commercial or non-commercial, and by any means.\n\nIn jurisdictions that recognize copyright laws, the author or authors of this software dedicate any and all copyright interest in the software to the public domain. We make this dedication for the benefit of the public at large and to the detriment of our heirs and successors. We intend this dedication to be an overt act of relinquishment in perpetuity of all present and future rights to this software under copyright law.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.\n\nFor more information, please refer to &lt;https://unlicense.org&gt;</string>
 </resources>
