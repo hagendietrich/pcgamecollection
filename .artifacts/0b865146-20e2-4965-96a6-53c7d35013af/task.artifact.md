@@ -1,9 +1,0 @@
-- [x] **AppTopBar Update**
-    - [x] Support always-on search mode
-    - [x] Clean up redundant icons
-- [x] **GameListScreen Update**
-    - [x] Remove `isSearchMode` state
-    - [x] Connect permanent search to ViewModel
-- [x] **Verification**
-    - [x] Verify build
-    - [x] Manual test: immediate search access in library
