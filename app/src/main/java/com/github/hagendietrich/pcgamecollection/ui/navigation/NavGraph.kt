@@ -20,6 +20,7 @@ import androidx.navigation.navArgument
 
 sealed class Screen(val route: String) {
     object Library : Screen("library")
+    object Wishlist : Screen("wishlist")
     object AddGame : Screen("add_game")
     object Setup : Screen("setup")
     object Sync : Screen("sync")
@@ -60,6 +61,20 @@ fun AppNavGraph(
                 onShowFullDetails = { gameId ->
                     navController.navigate(Screen.GameDetails.createRoute(gameId))
                 }
+            )
+        }
+        composable(Screen.Wishlist.route) {
+            val viewModel: WishlistViewModel = viewModel(
+                factory = object : ViewModelProvider.Factory {
+                    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                        @Suppress("UNCHECKED_CAST")
+                        return WishlistViewModel(gameRepository) as T
+                    }
+                }
+            )
+            WishlistScreen(
+                viewModel = viewModel,
+                onNavigate = { route -> navController.navigate(route) }
             )
         }
         composable(Screen.AddGame.route) {

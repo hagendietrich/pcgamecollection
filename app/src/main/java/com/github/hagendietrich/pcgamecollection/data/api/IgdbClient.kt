@@ -89,6 +89,29 @@ class IgdbClient(
         }
     }
 
+    /**
+     * Fetches ALL external game entries (store links) for a given IGDB game directly from the
+     * external_games endpoint. This is required because nested `external_games` inside game
+     * search results are truncated by the IGDB API and often miss store entries like Steam.
+     */
+    suspend fun getExternalGamesForGame(clientId: String, gameId: Long): List<IgdbExternalGameData> {
+        val token = accessToken ?: return emptyList()
+
+        return try {
+            val externals: List<IgdbExternalGameData> = client.post("https://api.igdb.com/v4/external_games") {
+                header("Client-ID", clientId)
+                header("Authorization", "Bearer $token")
+                setBody("fields game, category, uid, url; where game = ($gameId); limit 200;")
+            }.body()
+            println("IGDB ExternalGames: game $gameId -> ${externals.size} entries")
+            externals
+        } catch (e: Exception) {
+            println("IGDB ExternalGamesForGame Error: ${e.message}")
+            e.printStackTrace()
+            emptyList()
+        }
+    }
+
     fun getFullCoverUrl(thumbUrl: String): String {
         // IGDB urls usually look like //images.igdb.com/igdb/image/upload/t_thumb/co1r8v.jpg
         // We want to change t_thumb to t_cover_big

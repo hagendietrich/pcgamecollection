@@ -2,6 +2,7 @@ package com.github.hagendietrich.pcgamecollection.data.database
 
 import androidx.room.TypeConverter
 import com.github.hagendietrich.pcgamecollection.data.model.CompletionStatus
+import com.github.hagendietrich.pcgamecollection.data.model.PlatformPrice
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
@@ -49,6 +50,20 @@ class Converters {
             Json.decodeFromString(value)
         } catch (e: Exception) {
             emptyMap()
+        }
+    }
+
+    @TypeConverter
+    fun fromPlatformPrices(value: List<PlatformPrice>): String {
+        return Json.encodeToString(value)
+    }
+
+    @TypeConverter
+    fun toPlatformPrices(value: String): List<PlatformPrice> {
+        return try {
+            Json.decodeFromString(value)
+        } catch (e: Exception) {
+            emptyList()
         }
     }
 

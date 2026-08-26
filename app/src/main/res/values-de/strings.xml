@@ -1,6 +1,7 @@
 <resources>
     <string name="app_name">PC Game Collection</string>
     <string name="menu_my_games">Meine Spiele</string>
+    <string name="menu_wishlist">Wunschliste</string>
     <string name="menu_add_game">Spiel hinzufügen</string>
     <string name="menu_sync">Cloud Synchronisation</string>
     <string name="menu_import">Import/Export Spiele</string>
@@ -24,6 +25,17 @@
     <string name="add_game_idle">Suche nach einem Spiel, um es deiner Sammlung hinzuzufügen.</string>
     <string name="add_game_empty">Keine Spiele gefunden.</string>
     <string name="add_game_success">%1$s zur Sammlung hinzugefügt</string>
+    <string name="wishlist_title">Wunschliste</string>
+    <string name="wishlist_empty">Deine Wunschliste ist leer. Tippe auf +, um Spiele hinzuzufügen!</string>
+    <string name="wishlist_add_success">%1$s zur Wunschliste hinzugefügt</string>
+    <string name="wishlist_already_present">%1$s ist bereits auf deiner Wunschliste</string>
+    <string name="wishlist_add_failed">Spiel konnte nicht zur Wunschliste hinzugefügt werden</string>
+    <string name="wishlist_price_unavailable">Preis nicht verfügbar</string>
+    <string name="wishlist_store_count_one">%1$d Shop</string>
+    <string name="wishlist_store_count_many">%1$d Shops</string>
+    <string name="wishlist_refresh_prices">Preise aktualisieren</string>
+    <string name="wishlist_remove_title">Von der Wunschliste entfernen?</string>
+    <string name="wishlist_remove_text">\"%1$s\" wird von deiner Wunschliste entfernt.</string>
     <string name="sort_title">Sortieren</string>
     <string name="sort_by_title">Titel (A-Z)</string>
     <string name="sort_by_date_asc">Veröffentlichungsdatum (Älteste)</string>

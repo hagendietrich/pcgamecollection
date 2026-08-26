@@ -38,6 +38,7 @@ class MainActivity : ComponentActivity() {
         val gameRepository = GameRepository(
             (application as App).database.gameDao(),
             (application as App).database.ignoredGameDao(),
+            (application as App).database.wishlistGameDao(),
             igdbClient,
             steamClient,
             gogClient,

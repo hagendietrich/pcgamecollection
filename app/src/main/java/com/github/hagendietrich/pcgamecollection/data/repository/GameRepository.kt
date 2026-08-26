@@ -9,10 +9,13 @@ import com.github.hagendietrich.pcgamecollection.data.api.UbisoftClient
 import com.github.hagendietrich.pcgamecollection.data.api.models.*
 import com.github.hagendietrich.pcgamecollection.data.dao.GameDao
 import com.github.hagendietrich.pcgamecollection.data.dao.IgnoredGameDao
+import com.github.hagendietrich.pcgamecollection.data.dao.WishlistGameDao
 import com.github.hagendietrich.pcgamecollection.data.model.BackupData
 import com.github.hagendietrich.pcgamecollection.data.model.CompletionStatus
 import com.github.hagendietrich.pcgamecollection.data.model.Game
 import com.github.hagendietrich.pcgamecollection.data.model.IgnoredGame
+import com.github.hagendietrich.pcgamecollection.data.model.PlatformPrice
+import com.github.hagendietrich.pcgamecollection.data.model.WishlistGame
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -40,6 +43,7 @@ data class SyncResult(
 class GameRepository(
     private val gameDao: GameDao,
     private val ignoredGameDao: IgnoredGameDao,
+    private val wishlistGameDao: WishlistGameDao,
     private val igdbClient: IgdbClient,
     private val steamClient: SteamClient,
     private val gogClient: GogClient,
@@ -1347,6 +1351,166 @@ class GameRepository(
      */
     suspend fun clearLibrary() = withContext(Dispatchers.IO) {
         gameDao.deleteAllGames()
+    }
+
+    // ==================== WISHLIST ====================
+
+    fun getAllWishlistGames(): Flow<List<WishlistGame>> = wishlistGameDao.getAllWishlistGames()
+
+    suspend fun addWishlistGame(game: WishlistGame) {
+        wishlistGameDao.insertWishlistGame(game)
+    }
+
+    suspend fun updateWishlistGame(game: WishlistGame) {
+        wishlistGameDao.updateWishlistGame(game)
+    }
+
+    suspend fun deleteWishlistGame(game: WishlistGame) {
+        wishlistGameDao.deleteWishlistGame(game)
+    }
+
+    suspend fun getWishlistGameByIgdbId(igdbId: Long): WishlistGame? {
+        return wishlistGameDao.getWishlistGameByIgdbId(igdbId)
+    }
+
+    /**
+     * Creates a wishlist entry from an IGDB search result.
+     * Collects all available store links (Steam, GOG, Epic) and fetches their current EUR prices.
+     */
+    suspend fun createWishlistEntryFromIgdb(igdbGame: IgdbGame): WishlistGame = withContext(Dispatchers.IO) {
+        WishlistGame(
+            title = igdbGame.name,
+            coverImageUrl = igdbGame.cover?.url?.let { getFullCoverUrl(it) },
+            igdbId = igdbGame.id,
+            platformPrices = buildPlatformPrices(igdbGame)
+        )
+    }
+
+    /**
+     * Re-fetches store prices for an existing wishlist entry (Steam/GOG only).
+     * If the entry has no store entries at all (e.g. created before store resolution was fixed),
+     * the store links are re-resolved from IGDB first.
+     */
+    suspend fun refreshWishlistPrices(game: WishlistGame): WishlistGame = withContext(Dispatchers.IO) {
+        if (game.platformPrices.isEmpty() && game.igdbId != null) {
+            println("Wishlist Refresh: No stores on '${game.title}' - re-resolving stores (igdbId=${game.igdbId})")
+            // IGDB keeps its access token in memory only - re-authenticate (e.g. after app restart)
+            val clientId = settingsRepository.clientId.firstOrNull() ?: run {
+                println("Wishlist Refresh: Aborted - no IGDB client id configured")
+                return@withContext game
+            }
+            val clientSecret = settingsRepository.clientSecret.firstOrNull() ?: run {
+                println("Wishlist Refresh: Aborted - no IGDB client secret configured")
+                return@withContext game
+            }
+            igdbClient.authenticate(clientId, clientSecret)
+
+            val igdbGame = igdbClient.getGamesByIds(clientId, listOf(game.igdbId)).firstOrNull()
+            if (igdbGame == null) {
+                println("Wishlist Refresh: Aborted - IGDB game not found for id ${game.igdbId}")
+                return@withContext game
+            }
+            val rebuilt = game.copy(platformPrices = buildPlatformPrices(igdbGame))
+            println("Wishlist Refresh: Rebuilt '${game.title}' with ${rebuilt.platformPrices.size} stores")
+            return@withContext rebuilt
+        }
+        game.copy(platformPrices = game.platformPrices.map { refreshPlatformPrice(it) })
+    }
+
+    /**
+     * Builds platform price entries for all stores we can resolve from IGDB external game data.
+     * Steam and GOG provide public price APIs; Epic gets a link only (no public price API).
+     *
+     * NOTE: IGDB no longer populates the `category` field reliably on external_games entries
+     * (newer entries are returned without it), so stores are resolved by URL pattern first
+     * and only fall back to the category enum.
+     */
+    private suspend fun buildPlatformPrices(igdbGame: IgdbGame): List<PlatformPrice> {
+        // Nested external_games in search results are truncated by the IGDB API and often miss
+        // store entries (e.g. Steam). Query the dedicated endpoint for the full list instead.
+        val clientId = settingsRepository.clientId.firstOrNull()
+        val externals = if (clientId != null) {
+            val fetched = igdbClient.getExternalGamesForGame(clientId, igdbGame.id)
+            if (fetched.isNotEmpty()) fetched else (igdbGame.externalGames ?: emptyList())
+        } else {
+            igdbGame.externalGames ?: emptyList()
+        }
+        val prices = mutableListOf<PlatformPrice>()
+        println("Wishlist Stores: '${igdbGame.name}' externals: ${externals.map { "cat=${it.category} url=${it.url}" }}")
+
+        // Finds the first external entry whose URL matches one of the given patterns,
+        // or whose category matches (fallback for older IGDB entries that have a category).
+        fun findExternal(urlPatterns: List<String>, category: Int?): IgdbExternalGameData? {
+            return externals.find { ext ->
+                urlPatterns.any { ext.url?.contains(it, ignoreCase = true) == true }
+            } ?: externals.find { category != null && it.category == category }
+        }
+
+        // Steam: uid/url contain the AppID -> public appdetails API (cc=de => EUR)
+        val steamExternal = findExternal(listOf("store.steampowered.com"), IgdbExternalCategory.STEAM)
+        val steamAppId = steamExternal?.url?.let { Regex("/app/(\\d+)").find(it)?.groupValues?.get(1) }
+            ?: steamExternal?.uid?.takeIf { it.isNotBlank() && it.all { c -> c.isDigit() } }
+        if (steamAppId != null) {
+            val priceInfo = steamClient.fetchCurrentPrice(steamAppId)
+            prices.add(PlatformPrice(
+                platform = "Steam",
+                storeUrl = "https://store.steampowered.com/app/$steamAppId",
+                price = priceInfo?.currentPrice ?: 0.0,
+                isOnSale = priceInfo?.isOnSale == true,
+                originalPrice = priceInfo?.originalPrice,
+                externalId = steamAppId
+            ))
+        }
+
+        // GOG: uid = numeric product ID -> public product prices API
+        val gogExternal = findExternal(listOf("gog.com"), IgdbExternalCategory.GOG)
+        val gogProductId = gogExternal?.uid?.takeIf { it.isNotBlank() && it.all { c -> c.isDigit() } }
+            ?: gogExternal?.url?.substringAfterLast("/")?.takeIf { it.isNotBlank() && it.all { c -> c.isDigit() } }
+        val gogStoreUrl = gogExternal?.url ?: gogProductId?.let { "https://www.gog.com/en/game/$it" } ?: ""
+        if (gogStoreUrl.isNotBlank()) {
+            val priceInfo = gogProductId?.let { gogClient.fetchProductPrice(it) }
+            prices.add(PlatformPrice(
+                platform = "GOG",
+                storeUrl = gogStoreUrl,
+                price = priceInfo?.currentPrice ?: 0.0,
+                isOnSale = priceInfo?.isOnSale == true,
+                originalPrice = priceInfo?.originalPrice,
+                externalId = gogProductId
+            ))
+        }
+
+        // Epic Games Store: no simple public price API - link only, price unavailable
+        val epicUrl = findExternal(
+            listOf("epicgames.com"),
+            IgdbExternalCategory.EPIC_GAMES
+        )?.url?.takeIf { it.isNotBlank() }
+        if (epicUrl != null) {
+            prices.add(PlatformPrice(
+                platform = "Epic",
+                storeUrl = epicUrl,
+                price = 0.0,
+                externalId = null
+            ))
+        }
+
+        return prices
+    }
+
+    private suspend fun refreshPlatformPrice(platformPrice: PlatformPrice): PlatformPrice {
+        val priceInfo = when (platformPrice.platform) {
+            "Steam" -> platformPrice.externalId?.let { steamClient.fetchCurrentPrice(it) }
+                ?.let { Triple(it.currentPrice, it.isOnSale, it.originalPrice) }
+            "GOG" -> platformPrice.externalId?.let { gogClient.fetchProductPrice(it) }
+                ?.let { Triple(it.currentPrice, it.isOnSale, it.originalPrice) }
+            else -> null
+        } ?: return platformPrice
+
+        return platformPrice.copy(
+            price = priceInfo.first,
+            isOnSale = priceInfo.second,
+            originalPrice = priceInfo.third,
+            lastUpdated = System.currentTimeMillis()
+        )
     }
 
     /**

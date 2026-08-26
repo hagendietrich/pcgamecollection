@@ -93,6 +93,13 @@ fun AppTopBar(
                         }
                     )
                     DropdownMenuItem(
+                        text = { Text(stringResource(R.string.menu_wishlist)) },
+                        onClick = {
+                            showMenu = false
+                            onNavigate(Screen.Wishlist.route)
+                        }
+                    )
+                    DropdownMenuItem(
                         text = { Text(stringResource(R.string.menu_add_game)) },
                         onClick = {
                             showMenu = false

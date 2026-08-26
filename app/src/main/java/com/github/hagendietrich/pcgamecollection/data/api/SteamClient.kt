@@ -7,6 +7,18 @@ import io.ktor.client.request.*
 import io.ktor.serialization.kotlinx.json.*
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.*
+
+/** Current price of a Steam app in EUR. */
+data class SteamPriceInfo(
+    val currentPrice: Double,
+    val originalPrice: Double?,
+    val isOnSale: Boolean
+)
 
 class SteamClient {
     private val client = HttpClient {
@@ -89,6 +101,38 @@ class SteamClient {
         } catch (e: Exception) {
             e.printStackTrace()
             emptyList()
+        }
+    }
+
+    /**
+     * Fetches the current price of a Steam app in EUR (German region).
+     * Prices are returned in major units (e.g. 14.99).
+     * Returns null if no price is available (e.g. free-to-play or fetch failure).
+     */
+    suspend fun fetchCurrentPrice(appId: String): SteamPriceInfo? {
+        return try {
+            val response: JsonObject = client.get("https://store.steampowered.com/api/appdetails") {
+                parameter("appids", appId)
+                parameter("cc", "de")
+                parameter("filters", "price_overview")
+            }.body()
+
+            val appData = response[appId]?.jsonObject ?: return null
+            if (appData["success"]?.jsonPrimitive?.booleanOrNull != true) return null
+
+            val overview = appData["data"]?.jsonObject?.get("price_overview")?.jsonObject ?: return null
+            val finalCents = overview["final"]?.jsonPrimitive?.intOrNull ?: return null
+            val initialCents = overview["initial"]?.jsonPrimitive?.intOrNull ?: finalCents
+            val discountPercent = overview["discount_percent"]?.jsonPrimitive?.intOrNull ?: 0
+
+            SteamPriceInfo(
+                currentPrice = finalCents / 100.0,
+                originalPrice = if (finalCents < initialCents) initialCents / 100.0 else null,
+                isOnSale = discountPercent > 0 && finalCents < initialCents
+            )
+        } catch (e: Exception) {
+            println("Steam Price Error for AppID $appId: ${e.message}")
+            null
         }
     }
 }

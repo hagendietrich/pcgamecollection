@@ -8,6 +8,13 @@ import io.ktor.serialization.kotlinx.json.*
 import kotlinx.coroutines.delay
 import kotlinx.serialization.json.*
 
+/** Current price of a GOG product in EUR. */
+data class GogPriceInfo(
+    val currentPrice: Double,
+    val originalPrice: Double?,
+    val isOnSale: Boolean
+)
+
 class GogClient {
     private val client = HttpClient {
         install(ContentNegotiation) {
@@ -23,6 +30,40 @@ class GogClient {
         val playtimeMinutes: Int = 0,
         val gogId: String
     )
+
+    /**
+     * Fetches the current price of a GOG product in EUR (German region).
+     * Prices are returned in major units (e.g. 14.99).
+     * Returns null if the product has no price or the fetch fails.
+     */
+    suspend fun fetchProductPrice(productId: String): GogPriceInfo? {
+        return try {
+            val response: JsonObject = client.get("https://api.gog.com/products/$productId/prices") {
+                parameter("countryCode", "DE")
+                header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+                header("Accept", "application/json")
+            }.body()
+
+            val pricesArray = response["_embedded"]?.jsonObject?.get("prices")?.jsonArray ?: return null
+            val first = pricesArray.firstOrNull()?.jsonObject ?: return null
+
+            val base = first["amount"]?.jsonPrimitive?.doubleOrNull
+            val finalAmount = first["finalAmount"]?.jsonPrimitive?.doubleOrNull
+            if (base == null && finalAmount == null) return null
+
+            val original = base ?: finalAmount!!
+            val current = finalAmount ?: base!!
+
+            GogPriceInfo(
+                currentPrice = current,
+                originalPrice = if (current < original) original else null,
+                isOnSale = current < original
+            )
+        } catch (e: Exception) {
+            println("GOG Price Error for Product $productId: ${e.message}")
+            null
+        }
+    }
 
     suspend fun fetchPublicGames(username: String): List<GogGame> {
         val allGames = mutableListOf<GogGame>()
