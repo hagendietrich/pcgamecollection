@@ -1473,7 +1473,12 @@ class GameRepository(
                 val target = normalize(igdbGame.name)
                 val best = candidates.find { normalize(it.slug) == target }
                     ?: candidates.find { val s = normalize(it.slug); s.contains(target) || target.contains(s) }
-                    ?: if (target.length >= 8) candidates.first() else null
+                    ?: candidates.find { candidate ->
+                        // Fallback: Check if title and target share a significant word (>= 4 chars)
+                        val candidateWords = normalize(candidate.title).windowed(4, 1)
+                        val targetWords = target.windowed(4, 1)
+                        candidateWords.any { it in targetWords }
+                    }
                 if (best != null) {
                     gogProductId = best.productId
                     gogStoreUrl = "https://www.gog.com/en/game/${best.slug}"
@@ -1494,17 +1499,21 @@ class GameRepository(
             ))
         }
 
-        // Epic Games Store: no simple public price API - link only, price unavailable
+        // Epic Games Store
         val epicUrl = findExternal(
             listOf("epicgames.com"),
             IgdbExternalCategory.EPIC_GAMES
         )?.url?.takeIf { it.isNotBlank() }
         if (epicUrl != null) {
+            val slug = epicUrl.substringAfter("/p/").substringBefore("?").removeSuffix("/")
+            val priceInfo = if (slug.isNotBlank()) epicClient.fetchProductPrice(slug) else null
             prices.add(PlatformPrice(
                 platform = "Epic",
                 storeUrl = epicUrl,
-                price = 0.0,
-                externalId = null
+                price = priceInfo?.currentPrice ?: 0.0,
+                isOnSale = priceInfo?.isOnSale == true,
+                originalPrice = priceInfo?.originalPrice,
+                externalId = slug.takeIf { it.isNotBlank() }
             ))
         }
 
@@ -1516,6 +1525,8 @@ class GameRepository(
             "Steam" -> platformPrice.externalId?.let { steamClient.fetchCurrentPrice(it) }
                 ?.let { Triple(it.currentPrice, it.isOnSale, it.originalPrice) }
             "GOG" -> platformPrice.externalId?.let { gogClient.fetchProductPrice(it) }
+                ?.let { Triple(it.currentPrice, it.isOnSale, it.originalPrice) }
+            "Epic" -> platformPrice.externalId?.let { epicClient.fetchProductPrice(it) }
                 ?.let { Triple(it.currentPrice, it.isOnSale, it.originalPrice) }
             else -> null
         } ?: return platformPrice

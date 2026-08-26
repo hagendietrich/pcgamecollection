@@ -11,8 +11,15 @@ import io.ktor.http.*
 import io.ktor.serialization.kotlinx.json.*
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.*
 import android.util.Base64
+
+/** Current price of an Epic Games Store product in EUR. */
+data class EpicPriceInfo(
+    val currentPrice: Double,
+    val originalPrice: Double?,
+    val isOnSale: Boolean
+)
 
 class EpicClient {
     private val client = HttpClient(CIO) {
@@ -163,4 +170,73 @@ class EpicClient {
         val records: List<EpicLibraryRecord> = emptyList(),
         val cursor: String? = null
     )
+
+    /**
+     * Fetches the current price of an Epic Games Store product in EUR (German region).
+     * Prices are returned in major units (e.g. 39.99).
+     * Bypasses age gates by sending an age-verification cookie.
+     */
+    suspend fun fetchProductPrice(productSlug: String): EpicPriceInfo? {
+        return try {
+            val query = """
+                query searchStoreQuery(${'$'}keywords: String, ${'$'}country: String!, ${'$'}locale: String!) {
+                  Catalog {
+                    searchStore(keywords: ${'$'}keywords, country: ${'$'}country, locale: ${'$'}locale) {
+                      elements {
+                        title
+                        productSlug
+                        price(country: ${'$'}country) {
+                          totalPrice {
+                            discountPrice
+                            originalPrice
+                            currencyCode
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+            """.trimIndent()
+
+            val response: JsonObject = client.post("https://store.epicgames.com/graphql") {
+                contentType(ContentType.Application.Json)
+                // Use browser-like UA for web store GraphQL to avoid Cloudflare blocks
+                header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+                // Bypass age gate for mature games
+                header("Cookie", "HasAcceptedAgeGates=Generic%3A18")
+                setBody(buildJsonObject {
+                    put("query", query)
+                    put("variables", buildJsonObject {
+                        put("keywords", productSlug)
+                        put("country", "DE")
+                        put("locale", "de")
+                    })
+                })
+            }.body()
+
+            val elements = response["data"]?.jsonObject?.get("Catalog")?.jsonObject
+                ?.get("searchStore")?.jsonObject?.get("elements")?.jsonArray ?: return null
+
+            // Find the element that matches our slug
+            val element = elements.map { it.jsonObject }.find { 
+                it["productSlug"]?.jsonPrimitive?.content == productSlug 
+            } ?: elements.firstOrNull()?.jsonObject ?: return null
+
+            val totalPrice = element["price"]?.jsonObject?.get("totalPrice")?.jsonObject ?: return null
+            val discountPriceCents = totalPrice["discountPrice"]?.jsonPrimitive?.intOrNull ?: 0
+            val originalPriceCents = totalPrice["originalPrice"]?.jsonPrimitive?.intOrNull ?: discountPriceCents
+
+            val current = discountPriceCents / 100.0
+            val original = originalPriceCents / 100.0
+
+            EpicPriceInfo(
+                currentPrice = current,
+                originalPrice = if (current < original) original else null,
+                isOnSale = current < original
+            )
+        } catch (e: Exception) {
+            println("Epic Price Error for slug $productSlug: ${e.message}")
+            null
+        }
+    }
 }
