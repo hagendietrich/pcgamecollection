@@ -1392,28 +1392,25 @@ class GameRepository(
      * the store links are re-resolved from IGDB first.
      */
     suspend fun refreshWishlistPrices(game: WishlistGame): WishlistGame = withContext(Dispatchers.IO) {
-        if (game.platformPrices.isEmpty() && game.igdbId != null) {
-            println("Wishlist Refresh: No stores on '${game.title}' - re-resolving stores (igdbId=${game.igdbId})")
-            // IGDB keeps its access token in memory only - re-authenticate (e.g. after app restart)
-            val clientId = settingsRepository.clientId.firstOrNull() ?: run {
-                println("Wishlist Refresh: Aborted - no IGDB client id configured")
-                return@withContext game
+        val igdbId = game.igdbId
+        if (igdbId != null) {
+            // Full re-resolve: stores may have been added to IGDB/GOG since the entry was created
+            // (e.g. GOG entries often lag behind for brand-new releases).
+            val clientId = settingsRepository.clientId.firstOrNull()
+            val clientSecret = settingsRepository.clientSecret.firstOrNull()
+            if (clientId != null && clientSecret != null) {
+                igdbClient.authenticate(clientId, clientSecret)
+                val igdbGame = igdbClient.getGamesByIds(clientId, listOf(igdbId)).firstOrNull()
+                if (igdbGame != null) {
+                    val rebuilt = buildPlatformPrices(igdbGame)
+                    if (rebuilt.isNotEmpty()) {
+                        println("Wishlist Refresh: Rebuilt '${game.title}' with ${rebuilt.size} stores")
+                        return@withContext game.copy(platformPrices = rebuilt)
+                    }
+                }
             }
-            val clientSecret = settingsRepository.clientSecret.firstOrNull() ?: run {
-                println("Wishlist Refresh: Aborted - no IGDB client secret configured")
-                return@withContext game
-            }
-            igdbClient.authenticate(clientId, clientSecret)
-
-            val igdbGame = igdbClient.getGamesByIds(clientId, listOf(game.igdbId)).firstOrNull()
-            if (igdbGame == null) {
-                println("Wishlist Refresh: Aborted - IGDB game not found for id ${game.igdbId}")
-                return@withContext game
-            }
-            val rebuilt = game.copy(platformPrices = buildPlatformPrices(igdbGame))
-            println("Wishlist Refresh: Rebuilt '${game.title}' with ${rebuilt.platformPrices.size} stores")
-            return@withContext rebuilt
         }
+        // Fallback: keep the known stores and only refresh their prices
         game.copy(platformPrices = game.platformPrices.map { refreshPlatformPrice(it) })
     }
 
@@ -1462,11 +1459,29 @@ class GameRepository(
             ))
         }
 
-        // GOG: uid = numeric product ID -> public product prices API
+        // GOG: prefer the IGDB entry; if IGDB has none (common for brand-new releases whose
+        // IGDB store data lags behind), search GOG's public catalog by title.
         val gogExternal = findExternal(listOf("gog.com"), IgdbExternalCategory.GOG)
-        val gogProductId = gogExternal?.uid?.takeIf { it.isNotBlank() && it.all { c -> c.isDigit() } }
+        var gogProductId = gogExternal?.uid?.takeIf { it.isNotBlank() && it.all { c -> c.isDigit() } }
             ?: gogExternal?.url?.substringAfterLast("/")?.takeIf { it.isNotBlank() && it.all { c -> c.isDigit() } }
-        val gogStoreUrl = gogExternal?.url ?: gogProductId?.let { "https://www.gog.com/en/game/$it" } ?: ""
+        var gogStoreUrl = gogExternal?.url ?: ""
+
+        if (gogProductId == null && gogStoreUrl.isBlank()) {
+            val candidates = gogClient.searchProduct(igdbGame.name)
+            if (candidates.isNotEmpty()) {
+                fun normalize(s: String) = s.lowercase().filter { it.isLetterOrDigit() }
+                val target = normalize(igdbGame.name)
+                val best = candidates.find { normalize(it.slug) == target }
+                    ?: candidates.find { val s = normalize(it.slug); s.contains(target) || target.contains(s) }
+                    ?: if (target.length >= 8) candidates.first() else null
+                if (best != null) {
+                    gogProductId = best.productId
+                    gogStoreUrl = "https://www.gog.com/en/game/${best.slug}"
+                    println("Wishlist Stores: GOG fallback search matched '${best.title}' (id=${best.productId}) for '${igdbGame.name}'")
+                }
+            }
+        }
+
         if (gogStoreUrl.isNotBlank()) {
             val priceInfo = gogProductId?.let { gogClient.fetchProductPrice(it) }
             prices.add(PlatformPrice(

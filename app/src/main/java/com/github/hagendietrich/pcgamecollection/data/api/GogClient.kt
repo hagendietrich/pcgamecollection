@@ -15,6 +15,13 @@ data class GogPriceInfo(
     val isOnSale: Boolean
 )
 
+/** A product from GOG's public catalog search. */
+data class GogSearchProduct(
+    val productId: String,
+    val slug: String,
+    val title: String
+)
+
 class GogClient {
     private val client = HttpClient {
         install(ContentNegotiation) {
@@ -32,23 +39,86 @@ class GogClient {
     )
 
     /**
-     * Fetches the current price of a GOG product in EUR (German region).
-     * Prices are returned in major units (e.g. 14.99).
-     * Returns null if the product has no price or the fetch fails.
+     * Searches GOG's public catalog for products matching the given query.
+     * Used as a fallback when IGDB has no GOG external_games entry (common for
+     * brand-new releases whose IGDB store data lags behind).
      */
-    suspend fun fetchProductPrice(productId: String): GogPriceInfo? {
+    suspend fun searchProduct(query: String): List<GogSearchProduct> {
         return try {
-            val response: JsonObject = client.get("https://api.gog.com/products/$productId/prices") {
-                parameter("countryCode", "DE")
+            val response: JsonObject = client.get("https://catalog.gog.com/v1/catalog") {
+                parameter("query", "like:$query")
                 header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
                 header("Accept", "application/json")
             }.body()
 
-            val pricesArray = response["_embedded"]?.jsonObject?.get("prices")?.jsonArray ?: return null
+            val products = response["products"]?.jsonArray ?: return emptyList()
+            products.mapNotNull { element ->
+                runCatching {
+                    val obj = element.jsonObject
+                    // catalog v1 returns ID as a string, but handle both for safety
+                    val id = obj["id"]?.jsonPrimitive?.content ?: return@runCatching null
+                    val slug = obj["slug"]?.jsonPrimitive?.content ?: return@runCatching null
+                    val title = obj["title"]?.jsonPrimitive?.content ?: return@runCatching null
+                    GogSearchProduct(productId = id, slug = slug, title = title)
+                }.getOrNull()
+            }
+        } catch (e: Exception) {
+            println("GOG Search Error for '$query': ${e.message}")
+            emptyList()
+        }
+    }
+
+    /**
+     * Fetches the current price of a GOG product in EUR (German region by default).
+     * Prices are returned in major units (e.g. 14.99).
+     * Bypasses age gates (HTML redirects) by sending an age-verification cookie.
+     * Returns null if the product has no price or the fetch fails.
+     */
+    suspend fun fetchProductPrice(productId: String, countryCode: String = "DE"): GogPriceInfo? {
+        return try {
+            val currency = when (countryCode.uppercase()) {
+                "US" -> "USD"
+                "GB" -> "GBP"
+                "PL" -> "PLN"
+                else -> "EUR"
+            }
+            val gogLc = "${countryCode.uppercase()}_${currency}_en-US"
+
+            val response: String = client.get("https://api.gog.com/products/$productId/prices") {
+                parameter("countryCode", countryCode)
+                header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+                header("Accept", "application/json")
+                // Bypass age gate for mature games
+                header("Cookie", "age_check=1; gog_lc=$gogLc")
+            }.body()
+
+            // Detect age gate redirect: GOG returns HTML with age confirmation instead of JSON
+            if (response.trim().startsWith("<") || !response.trim().startsWith("{")) {
+                if (countryCode == "DE") {
+                    println("GOG Price Warning for Product $productId: Age gate still detected for DE. Trying fallback region AT...")
+                    return fetchProductPrice(productId, "AT")
+                }
+                println("GOG Price Warning for Product $productId: Age gate detected (HTML response) for $countryCode")
+                return null
+            }
+
+            val json = Json.decodeFromString<JsonObject>(response)
+            val pricesArray = json["_embedded"]?.jsonObject?.get("prices")?.jsonArray ?: return null
             val first = pricesArray.firstOrNull()?.jsonObject ?: return null
 
-            val base = first["amount"]?.jsonPrimitive?.doubleOrNull
-            val finalAmount = first["finalAmount"]?.jsonPrimitive?.doubleOrNull
+            // GOG API can return either 'amount' (double) or 'finalPrice' (string in cents like "199 EUR")
+            fun parseGogPrice(priceElement: JsonElement?): Double? {
+                val content = priceElement?.jsonPrimitive?.content ?: return null
+                // Try direct double first
+                content.toDoubleOrNull()?.let { return it }
+                // Extract digits and treat as cents: "199 EUR" -> 1.99
+                val digits = content.filter { it.isDigit() }.toDoubleOrNull() ?: return null
+                return digits / 100.0
+            }
+
+            val base = first["amount"]?.jsonPrimitive?.doubleOrNull ?: parseGogPrice(first["basePrice"])
+            val finalAmount = first["finalAmount"]?.jsonPrimitive?.doubleOrNull ?: parseGogPrice(first["finalPrice"])
+            
             if (base == null && finalAmount == null) return null
 
             val original = base ?: finalAmount!!
