@@ -13,8 +13,6 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Sort
@@ -27,22 +25,19 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import coil.compose.AsyncImage
 import com.github.hagendietrich.pcgamecollection.R
-import com.github.hagendietrich.pcgamecollection.data.api.models.IgdbGame
 import com.github.hagendietrich.pcgamecollection.data.model.CompletionStatus
 import com.github.hagendietrich.pcgamecollection.data.model.Game
 import com.github.hagendietrich.pcgamecollection.data.model.GroupingType
 import com.github.hagendietrich.pcgamecollection.data.model.SortOrder
 import com.github.hagendietrich.pcgamecollection.ui.components.AppTopBar
+import com.github.hagendietrich.pcgamecollection.ui.components.ManageableChip
 import com.github.hagendietrich.pcgamecollection.ui.theme.PcGameCollectionTheme
 import com.github.hagendietrich.pcgamecollection.ui.viewmodel.GameListViewModel
-import kotlinx.coroutines.flow.first
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -57,14 +52,12 @@ fun GameListScreen(
     val columnCount by viewModel.columnCount.collectAsState()
     val selectedGameIds by viewModel.selectedGameIds.collectAsState()
     val isMultiSelectMode by viewModel.isMultiSelectMode.collectAsState()
-    val reMatchResults by viewModel.reMatchResults.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
     val libraryFilters by viewModel.libraryFilters.collectAsState()
     val allLabels by viewModel.allLabels.collectAsState()
     val allGenres by viewModel.allGenres.collectAsState()
     
     val collapsedGroups by viewModel.collapsedGroups.collectAsState()
-    val selectedGameIdForSheet by viewModel.selectedGameIdForSheet.collectAsState()
     val gridState = androidx.compose.foundation.lazy.grid.rememberLazyGridState(
         initialFirstVisibleItemIndex = viewModel.scrollIndex,
         initialFirstVisibleItemScrollOffset = viewModel.scrollOffset
@@ -78,30 +71,11 @@ fun GameListScreen(
         )
     }
     
-    val selectedGame = remember(selectedGameIdForSheet, allGames) {
-        selectedGameIdForSheet?.let { id -> allGames.find { it.id == id } }
-    }
-    
-    val sheetState = rememberModalBottomSheetState()
     var showSortMenu by remember { mutableStateOf(false) }
     var showGroupingMenu by remember { mutableStateOf(false) }
     var showFilterMenu by remember { mutableStateOf(false) }
     var filterCategoryToEdit by remember { mutableStateOf<String?>(null) }
-    var showReMatchDialog by remember { mutableStateOf(false) }
 
-    val lifecycle = androidx.compose.ui.platform.LocalLifecycleOwner.current.lifecycle
-    var isScreenResumed by remember { mutableStateOf(lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)) }
-
-    DisposableEffect(lifecycle) {
-        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
-            isScreenResumed = lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)
-        }
-        lifecycle.addObserver(observer)
-        onDispose {
-            lifecycle.removeObserver(observer)
-        }
-    }
-    
     Scaffold(
         topBar = {
             if (isMultiSelectMode) {
@@ -162,9 +136,16 @@ fun GameListScreen(
                                     }
                                 )
                                 DropdownMenuItem(
-                                    text = { Text("Group by Genre") },
+                                    text = { Text("Group by Series") },
                                     onClick = {
-                                        viewModel.setGroupingType(GroupingType.GENRE); showGroupingMenu =
+                                        viewModel.setGroupingType(GroupingType.SERIES); showGroupingMenu =
+                                        false
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Group by Franchise") },
+                                    onClick = {
+                                        viewModel.setGroupingType(GroupingType.FRANCHISE); showGroupingMenu =
                                         false
                                     }
                                 )
@@ -385,7 +366,7 @@ fun GameListScreen(
                                         if (isMultiSelectMode) {
                                             viewModel.toggleSelection(game.id)
                                         } else {
-                                            viewModel.showGameDetailSheet(game.id)
+                                            onShowFullDetails(game.id)
                                         }
                                     },
                                     onLongClick = {
@@ -404,7 +385,7 @@ fun GameListScreen(
                                     if (isMultiSelectMode) {
                                         viewModel.toggleSelection(game.id)
                                     } else {
-                                        viewModel.showGameDetailSheet(game.id)
+                                        onShowFullDetails(game.id)
                                     }
                                 },
                                 onLongClick = {
@@ -416,51 +397,6 @@ fun GameListScreen(
                 }
             }
         }
-    }
-
-    if (isScreenResumed && selectedGameIdForSheet != null && selectedGame != null) {
-        ModalBottomSheet(
-            onDismissRequest = { viewModel.dismissGameDetailSheet() },
-            sheetState = sheetState
-        ) {
-            GameDetailContent(
-                game = selectedGame,
-                viewModel = viewModel,
-                onUpdate = { updatedGame ->
-                    viewModel.updateGame(updatedGame)
-                },
-                onDelete = { andIgnore ->
-                    viewModel.deleteGame(selectedGame, andIgnore)
-                    viewModel.dismissGameDetailSheet()
-                },
-                onReMatchClick = {
-                    viewModel.searchForReMatch(selectedGame.title)
-                    showReMatchDialog = true
-                },
-                onShowFullDetails = { 
-                    onShowFullDetails(it)
-                }
-            )
-        }
-    }
-
-    if (showReMatchDialog && selectedGame != null) {
-        val isSearching by viewModel.isSearchingReMatch.collectAsState()
-        ReMatchDialog(
-            initialTitle = selectedGame.title,
-            candidates = reMatchResults,
-            isSearching = isSearching,
-            onSearch = { viewModel.searchForReMatch(it) },
-            onSelect = { candidate ->
-                viewModel.applyReMatch(selectedGame.id, candidate)
-                showReMatchDialog = false
-                viewModel.dismissGameDetailSheet()
-            },
-            onDismiss = {
-                viewModel.clearReMatchResults()
-                showReMatchDialog = false
-            }
-        )
     }
 
     if (filterCategoryToEdit != null) {
@@ -801,9 +737,8 @@ fun BulkTagManagerDialog(
                 if (allTags.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(8.dp))
                     Text("Suggestions:", style = MaterialTheme.typography.labelSmall)
-                    FlowRow(
-                        modifier = Modifier.fillMaxWidth().heightIn(max = 100.dp).verticalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    OptInFlowRowForBulk(
+                        modifier = Modifier.fillMaxWidth().heightIn(max = 100.dp).verticalScroll(rememberScrollState())
                     ) {
                         allTags.forEach { tag ->
                             AssistChip(
@@ -901,812 +836,14 @@ fun BulkModeManagerDialog(
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun GameDetailContent(
-    game: Game,
-    viewModel: GameListViewModel,
-    onUpdate: (Game) -> Unit,
-    onDelete: (Boolean) -> Unit,
-    onReMatchClick: () -> Unit,
-    onShowFullDetails: (Int) -> Unit
+fun OptInFlowRowForBulk(
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit
 ) {
-    var showPlaytimePicker by remember { mutableStateOf(false) }
-    var showAddLabelDialog by remember { mutableStateOf(false) }
-    var showAddGenreDialog by remember { mutableStateOf(false) }
-    var showAddPlatformDialog by remember { mutableStateOf(false) }
-    var showReleaseDatePicker by remember { mutableStateOf(false) }
-    var showEditModeDialog by remember { mutableStateOf(false) }
-    var showAlternativeCoversDialog by remember { mutableStateOf(false) }
-    var showDeleteConfirmDialog by remember { mutableStateOf(false) }
-
-    val isSearchingReMatch by viewModel.isSearchingReMatch.collectAsState()
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .verticalScroll(rememberScrollState())
-            .padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Box(modifier = Modifier.fillMaxWidth()) {
-            Text(
-                text = game.title,
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.align(Alignment.Center).padding(horizontal = 48.dp),
-                textAlign = TextAlign.Center
-            )
-            if (isSearchingReMatch) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(24.dp).align(Alignment.TopEnd).padding(4.dp),
-                    strokeWidth = 2.dp
-                )
-            } else {
-                IconButton(
-                    onClick = onReMatchClick,
-                    modifier = Modifier.align(Alignment.TopEnd)
-                ) {
-                    Icon(Icons.Default.Refresh, contentDescription = "Re-match IGDB Metadata")
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-        
-        Box(modifier = Modifier.fillMaxWidth()) {
-            AsyncImage(
-                model = game.coverImageUrl,
-                contentDescription = null,
-                modifier = Modifier
-                    .height(240.dp)
-                    .aspectRatio(0.75f)
-                    .clickable { onShowFullDetails(game.id) }
-                    .align(Alignment.Center),
-                contentScale = ContentScale.Crop
-            )
-
-            val isFetchingCovers by viewModel.isFetchingCovers.collectAsState()
-            if (isFetchingCovers) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(24.dp).align(Alignment.TopEnd).padding(4.dp),
-                    strokeWidth = 2.dp
-                )
-            } else {
-                IconButton(
-                    onClick = { 
-                        viewModel.fetchAlternativeCovers(game.id)
-                        showAlternativeCoversDialog = true 
-                    },
-                    modifier = Modifier.align(Alignment.TopEnd)
-                ) {
-                    Icon(Icons.Default.Edit, contentDescription = "Change Cover")
-                }
-            }
-        }
-        
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Platforms
-        Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Platforms:", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                Spacer(modifier = Modifier.width(8.dp))
-                Surface(
-                    shape = MaterialTheme.shapes.small,
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-                    modifier = Modifier.clickable { showAddPlatformDialog = true }
-                ) {
-                    Text(
-                        text = " + Add ",
-                        style = MaterialTheme.typography.labelMedium,
-                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
-                    )
-                }
-            }
-            FlowRow(
-                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                horizontalArrangement = Arrangement.Center,
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                game.platforms.forEach { platform ->
-                    val isOnline = platform == "Steam" || platform == "GOG"
-                    ManageableChip(
-                        text = platform,
-                        onDelete = { viewModel.removePlatformFromGame(game.id, platform) },
-                        color = if (isOnline) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f)
-                    )
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-        
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                text = "Released: ",
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.Bold
-            )
-            Text(
-                text = game.releaseDate ?: "Add Release Date",
-                style = MaterialTheme.typography.bodyMedium.copy(
-                    textDecoration = if (game.releaseDate == null) androidx.compose.ui.text.style.TextDecoration.Underline else null
-                ),
-                modifier = Modifier.combinedClickable(
-                    onClick = { if (game.releaseDate == null) showReleaseDatePicker = true },
-                    onLongClick = { showReleaseDatePicker = true }
-                )
-            )
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Status Row
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Status: ", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
-            var expanded by remember { mutableStateOf(false) }
-            Box(modifier = Modifier.wrapContentSize(Alignment.TopEnd)) {
-                TextButton(onClick = { expanded = true }) {
-                    Text(game.completionStatus.name)
-                }
-                DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                    CompletionStatus.entries.forEach { status ->
-                        DropdownMenuItem(
-                            text = { Text(status.name) },
-                            onClick = {
-                                onUpdate(game.copy(completionStatus = status))
-                                expanded = false
-                            }
-                        )
-                    }
-                }
-            }
-        }
-
-        // Playtime Row
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Playtime: ", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
-            val hours = game.playtimeMinutes / 60
-            val minutes = game.playtimeMinutes % 60
-            TextButton(onClick = { showPlaytimePicker = true }) {
-                Text("${hours}h ${minutes}m")
-            }
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Mode
-        Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(stringResource(R.string.detail_mode), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                Spacer(modifier = Modifier.width(8.dp))
-                Surface(
-                    shape = MaterialTheme.shapes.small,
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-                    modifier = Modifier.clickable { showEditModeDialog = true }
-                ) {
-                    Text(
-                        text = " + Add ",
-                        style = MaterialTheme.typography.labelMedium,
-                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
-                    )
-                }
-            }
-            FlowRow(
-                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                horizontalArrangement = Arrangement.Center,
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                game.gameModes.forEach { mode ->
-                    ManageableChip(
-                        text = mode,
-                        onDelete = { 
-                            viewModel.updateGameModes(game.id, game.gameModes - mode)
-                        }
-                    )
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Genres
-        Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Genres:", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                Spacer(modifier = Modifier.width(8.dp))
-                Surface(
-                    shape = MaterialTheme.shapes.small,
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-                    modifier = Modifier.clickable { showAddGenreDialog = true }
-                ) {
-                    Text(
-                        text = " + Add ",
-                        style = MaterialTheme.typography.labelMedium,
-                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
-                    )
-                }
-            }
-            FlowRow(
-                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                horizontalArrangement = Arrangement.Center,
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                game.genres.forEach { genre ->
-                    ManageableChip(
-                        text = genre,
-                        onDelete = { viewModel.removeGenreFromGame(game.id, genre) }
-                    )
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Labels
-        Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Labels:", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                Spacer(modifier = Modifier.width(8.dp))
-                Surface(
-                    shape = MaterialTheme.shapes.small,
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-                    modifier = Modifier.clickable { showAddLabelDialog = true }
-                ) {
-                    Text(
-                        text = " + Add ",
-                        style = MaterialTheme.typography.labelMedium,
-                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
-                    )
-                }
-            }
-            FlowRow(
-                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                horizontalArrangement = Arrangement.Center,
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                game.labels.forEach { label ->
-                    ManageableChip(
-                        text = label,
-                        onDelete = { viewModel.removeLabelFromGame(game.id, label) }
-                    )
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(32.dp))
-        Button(
-            onClick = { showDeleteConfirmDialog = true },
-            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text(stringResource(R.string.detail_remove))
-        }
-        Spacer(modifier = Modifier.height(16.dp))
-    }
-
-    if (showDeleteConfirmDialog) {
-        var addToIgnoreList by remember { mutableStateOf(false) }
-        val hasOnlinePlatform = game.platforms.any { it == "Steam" || it == "GOG" || it == "Epic" || it == "Ubisoft" || it == "Battle.net" }
-
-        AlertDialog(
-            onDismissRequest = { showDeleteConfirmDialog = false },
-            title = { Text("Delete Game") },
-            text = {
-                Column {
-                    Text("Are you sure you want to delete \"${game.title}\"?")
-                    if (hasOnlinePlatform) {
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Checkbox(
-                                checked = addToIgnoreList,
-                                onCheckedChange = { addToIgnoreList = it }
-                            )
-                            Text(
-                                "Add to Ignore List (prevents future sync)",
-                                modifier = Modifier.padding(start = 8.dp),
-                                style = MaterialTheme.typography.bodyMedium
-                            )
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = { 
-                        onDelete(addToIgnoreList)
-                        showDeleteConfirmDialog = false 
-                    },
-                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
-                ) {
-                    Text("Delete")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDeleteConfirmDialog = false }) {
-                    Text("Cancel")
-                }
-            }
-        )
-    }
-
-    if (showPlaytimePicker) {
-        PlaytimePickerDialog(
-            initialMinutes = game.playtimes["Manual"] ?: 0,
-            onDismiss = { showPlaytimePicker = false },
-            onConfirm = { newMinutes ->
-                // When manually updating playtime, we store it under a "Manual" source in our internal map
-                val updatedPlaytimes = game.playtimes.toMutableMap()
-                updatedPlaytimes["Manual"] = newMinutes
-                val totalPlaytime = updatedPlaytimes.values.sum()
-                
-                onUpdate(game.copy(
-                    playtimes = updatedPlaytimes,
-                    playtimeMinutes = totalPlaytime
-                ))
-                showPlaytimePicker = false
-            }
-        )
-    }
-
-    if (showReleaseDatePicker) {
-        SetReleaseDateDialog(
-            initialDate = game.releaseDate ?: "",
-            onConfirm = { 
-                viewModel.updateReleaseDate(game.id, it)
-                showReleaseDatePicker = false 
-            },
-            onDismiss = { showReleaseDatePicker = false }
-        )
-    }
-
-    if (showAddLabelDialog) {
-        val allLabels by viewModel.allLabels.collectAsState()
-        AddTagDialog(
-            title = "Add Label",
-            suggestions = allLabels,
-            onConfirm = { viewModel.addLabelToGame(game.id, it); showAddLabelDialog = false },
-            onDismiss = { showAddLabelDialog = false }
-        )
-    }
-
-    if (showAddGenreDialog) {
-        val allGenres by viewModel.allGenres.collectAsState()
-        AddTagDialog(
-            title = "Add Genre",
-            suggestions = allGenres,
-            onConfirm = { viewModel.addGenreToGame(game.id, it); showAddGenreDialog = false },
-            onDismiss = { showAddGenreDialog = false }
-        )
-    }
-
-    if (showAddPlatformDialog) {
-        val allPlatforms by viewModel.allPlatforms.collectAsState()
-        AddTagDialog(
-            title = "Add Platform",
-            suggestions = allPlatforms,
-            onConfirm = { viewModel.addPlatformToGame(game.id, it); showAddPlatformDialog = false },
-            onDismiss = { showAddPlatformDialog = false }
-        )
-    }
-
-    if (showAddPlatformDialog) {
-        val allPlatforms by viewModel.allPlatforms.collectAsState()
-        AddTagDialog(
-            title = "Add Platform",
-            suggestions = allPlatforms,
-            onConfirm = { viewModel.addPlatformToGame(game.id, it); showAddPlatformDialog = false },
-            onDismiss = { showAddPlatformDialog = false }
-        )
-    }
-
-    if (showEditModeDialog) {
-        EditModeDialog(
-            currentModes = game.gameModes,
-            onConfirm = { 
-                viewModel.updateGameModes(game.id, it)
-                showEditModeDialog = false 
-            },
-            onDismiss = { showEditModeDialog = false }
-        )
-    }
-
-    if (showAlternativeCoversDialog) {
-        val alternativeCovers by viewModel.alternativeCovers.collectAsState()
-        val isFetching by viewModel.isFetchingCovers.collectAsState()
-
-        AlternativeCoversDialog(
-            covers = alternativeCovers,
-            isFetching = isFetching,
-            onSelect = { 
-                viewModel.updateGameCover(game.id, it)
-                showAlternativeCoversDialog = false 
-            },
-            onDismiss = { 
-                viewModel.clearAlternativeCovers()
-                showAlternativeCoversDialog = false 
-            }
-        )
-    }
-}
-
-@Composable
-fun AlternativeCoversDialog(
-    covers: List<String>,
-    isFetching: Boolean,
-    onSelect: (String) -> Unit,
-    onDismiss: () -> Unit
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Select Alternative Cover") },
-        text = {
-            Box(modifier = Modifier.fillMaxWidth().heightIn(min = 200.dp, max = 500.dp)) {
-                if (isFetching) {
-                    CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
-                } else if (covers.isEmpty()) {
-                    Text("No alternative covers found.", modifier = Modifier.align(Alignment.Center))
-                } else {
-                    LazyVerticalGrid(
-                        columns = GridCells.Fixed(2),
-                        contentPadding = PaddingValues(8.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        items(covers) { coverUrl ->
-                            Card(
-                                modifier = Modifier
-                                    .aspectRatio(0.75f)
-                                    .clickable { onSelect(coverUrl) },
-                                shape = MaterialTheme.shapes.extraSmall,
-                                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-                            ) {
-                                AsyncImage(
-                                    model = coverUrl,
-                                    contentDescription = null,
-                                    modifier = Modifier.fillMaxSize(),
-                                    contentScale = ContentScale.Crop
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = {},
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel")
-            }
-        }
-    )
-}
-
-@Composable
-fun EditModeDialog(
-    currentModes: List<String>,
-    onConfirm: (List<String>) -> Unit,
-    onDismiss: () -> Unit
-) {
-    val options = listOf("Singleplayer", "Multiplayer", "Co-op")
-    val selectedModes = remember { mutableStateListOf<String>().apply { addAll(currentModes) } }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.detail_mode_edit)) },
-        text = {
-            Column {
-                options.forEach { mode ->
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically, 
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { 
-                                if (selectedModes.contains(mode)) selectedModes.remove(mode) else selectedModes.add(mode)
-                            }
-                            .padding(vertical = 4.dp)
-                    ) {
-                        Checkbox(
-                            checked = selectedModes.contains(mode), 
-                            onCheckedChange = { 
-                                if (it) selectedModes.add(mode) else selectedModes.remove(mode)
-                            }
-                        )
-                        Text(mode, modifier = Modifier.padding(start = 8.dp))
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = { onConfirm(selectedModes.toList()) }) {
-                Text("Confirm")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel")
-            }
-        }
-    )
-}
-
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-fun ManageableChip(
-    text: String,
-    onDelete: () -> Unit,
-    color: Color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f)
-) {
-    var showDeleteConfirm by remember { mutableStateOf(false) }
-
-    Surface(
-        modifier = Modifier
-            .combinedClickable(
-                onClick = {},
-                onLongClick = { showDeleteConfirm = true }
-            ),
-        shape = MaterialTheme.shapes.small,
-        color = color,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
-    ) {
-        Text(
-            text = text,
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-            style = MaterialTheme.typography.labelMedium
-        )
-    }
-
-    if (showDeleteConfirm) {
-        AlertDialog(
-            onDismissRequest = { showDeleteConfirm = false },
-            title = { Text("Remove \"$text\"?") },
-            confirmButton = {
-                TextButton(onClick = { onDelete(); showDeleteConfirm = false }) {
-                    Text("Remove", color = MaterialTheme.colorScheme.error)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDeleteConfirm = false }) {
-                    Text("Cancel")
-                }
-            }
-        )
-    }
-}
-
-@Composable
-fun AddTagDialog(
-    title: String,
-    suggestions: List<String>,
-    onConfirm: (String) -> Unit,
-    onDismiss: () -> Unit
-) {
-    var text by remember { mutableStateOf("") }
-    
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(title) },
-        text = {
-            Column(modifier = Modifier.fillMaxWidth()) {
-                OutlinedTextField(
-                    value = text,
-                    onValueChange = { text = it },
-                    label = { Text("Name") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                
-                if (suggestions.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text("Existing:", style = MaterialTheme.typography.labelSmall)
-                    FlowRow(
-                        modifier = Modifier.fillMaxWidth().heightIn(max = 150.dp).verticalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        suggestions.forEach { suggestion ->
-                            AssistChip(
-                                onClick = { text = suggestion },
-                                label = { Text(suggestion) }
-                            )
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = { onConfirm(text) }) {
-                Text("Add")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel")
-            }
-        }
-    )
-}
-
-@Composable
-fun PlaytimePickerDialog(
-    initialMinutes: Int,
-    onDismiss: () -> Unit,
-    onConfirm: (Int) -> Unit
-) {
-    var hoursStr by remember { mutableStateOf((initialMinutes / 60).toString()) }
-    var minutesStr by remember { mutableStateOf((initialMinutes % 60).toString()) }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Set Offline Playtime") },
-        text = {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                OutlinedTextField(
-                    value = hoursStr,
-                    onValueChange = { newValue ->
-                        if (newValue.isEmpty() || newValue.all { it.isDigit() }) {
-                            hoursStr = newValue
-                        }
-                    },
-                    label = { Text("Hours") },
-                    modifier = Modifier.weight(1f),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    singleLine = true,
-                    textStyle = LocalTextStyle.current.copy(textAlign = TextAlign.Center)
-                )
-                Text(
-                    text = ":",
-                    style = MaterialTheme.typography.headlineLarge,
-                    modifier = Modifier.padding(horizontal = 8.dp)
-                )
-                OutlinedTextField(
-                    value = minutesStr,
-                    onValueChange = { newValue ->
-                        if (newValue.isEmpty() || (newValue.all { it.isDigit() } && (newValue.toIntOrNull() ?: 0) < 60)) {
-                            minutesStr = newValue
-                        }
-                    },
-                    label = { Text("Minutes") },
-                    modifier = Modifier.weight(1f),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    singleLine = true,
-                    textStyle = LocalTextStyle.current.copy(textAlign = TextAlign.Center)
-                )
-            }
-        },
-        confirmButton = {
-            TextButton(
-                onClick = {
-                    val h = hoursStr.toIntOrNull() ?: 0
-                    val m = minutesStr.toIntOrNull() ?: 0
-                    onConfirm(h * 60 + m)
-                }
-            ) {
-                Text("Confirm")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel")
-            }
-        }
-    )
-}
-
-@Composable
-fun SetReleaseDateDialog(
-    initialDate: String,
-    onConfirm: (String) -> Unit,
-    onDismiss: () -> Unit
-) {
-    var dateText by remember { mutableStateOf(initialDate) }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Set Release Date") },
-        text = {
-            Column(modifier = Modifier.fillMaxWidth()) {
-                Text(
-                    "Enter date in YYYY-MM-DD format:",
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.padding(bottom = 8.dp)
-                )
-                OutlinedTextField(
-                    value = dateText,
-                    onValueChange = { dateText = it },
-                    label = { Text("Release Date") },
-                    placeholder = { Text("e.g. 2024-05-20") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = { onConfirm(dateText) }) {
-                Text("Confirm")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel")
-            }
-        }
-    )
-}
-
-@Composable
-fun ReMatchDialog(
-    initialTitle: String,
-    candidates: List<IgdbGame>,
-    isSearching: Boolean,
-    onSearch: (String) -> Unit,
-    onSelect: (IgdbGame) -> Unit,
-    onDismiss: () -> Unit
-) {
-    var searchText by remember { mutableStateOf(initialTitle) }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Re-match IGDB Metadata") },
-        text = {
-            Column(modifier = Modifier.fillMaxWidth().heightIn(max = 500.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    OutlinedTextField(
-                        value = searchText,
-                        onValueChange = { searchText = it },
-                        label = { Text("Search Title") },
-                        modifier = Modifier.weight(1f),
-                        singleLine = true
-                    )
-                    IconButton(onClick = { onSearch(searchText) }, enabled = !isSearching) {
-                        Icon(Icons.Default.Search, contentDescription = "Search")
-                    }
-                }
-                
-                Spacer(modifier = Modifier.height(16.dp))
-                
-                if (isSearching) {
-                    Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator()
-                    }
-                } else if (candidates.isEmpty()) {
-                    Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                        Text("No results. Try refining your search.", style = MaterialTheme.typography.bodySmall)
-                    }
-                } else {
-                    LazyColumn(modifier = Modifier.weight(1f)) {
-                        items(candidates) { candidate ->
-                            val year = candidate.firstReleaseDate?.let { 
-                                java.time.Instant.ofEpochSecond(it).atZone(java.time.ZoneId.systemDefault()).year 
-                            }
-                            
-                            ListItem(
-                                headlineContent = { Text(candidate.name) },
-                                supportingContent = { Text(year?.toString() ?: "Unknown Year") },
-                                leadingContent = {
-                                    AsyncImage(
-                                        model = candidate.cover?.url?.let { "https:" + it.replace("t_thumb", "t_cover_small") },
-                                        contentDescription = null,
-                                        modifier = Modifier.size(40.dp),
-                                        contentScale = ContentScale.Crop
-                                    )
-                                },
-                                modifier = Modifier.clickable { onSelect(candidate) }
-                            )
-                            HorizontalDivider()
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = {},
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel")
-            }
-        }
+    FlowRow(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        content = { content() }
     )
 }
 

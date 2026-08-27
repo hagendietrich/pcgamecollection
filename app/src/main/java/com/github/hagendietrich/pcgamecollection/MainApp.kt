@@ -48,6 +48,24 @@ class App : Application(), ImageLoaderFactory {
                 )
             }
         }
+
+        private val MIGRATION_16_17 = object : Migration(16, 17) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `games` ADD COLUMN `personalRating` INTEGER")
+            }
+        }
+
+        private val MIGRATION_17_18 = object : Migration(17, 18) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `games` ADD COLUMN `franchises` TEXT NOT NULL DEFAULT '[]'")
+            }
+        }
+
+        private val MIGRATION_18_19 = object : Migration(18, 19) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `games` ADD COLUMN `series` TEXT NOT NULL DEFAULT '[]'")
+            }
+        }
     }
 
     lateinit var database: AppDatabase
@@ -62,7 +80,7 @@ class App : Application(), ImageLoaderFactory {
             AppDatabase::class.java,
             "digital_collection.db"
         )
-        .addMigrations(MIGRATION_15_16) // preserve library data on upgrade to v16 (wishlist)
+        .addMigrations(MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19) // preserve library data on upgrade to v19
         .fallbackToDestructiveMigration() // safety net for pre-15 versions
         .build()
     }

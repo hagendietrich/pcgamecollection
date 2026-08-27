@@ -27,7 +27,22 @@ data class IgdbGame(
     val themes: List<IgdbTheme>? = null,
     val keywords: List<IgdbKeyword>? = null,
     @SerialName("external_games") val externalGames: List<IgdbExternalGameData>? = null,
-    @SerialName("game_modes") val gameModes: List<IgdbGameMode>? = null
+    @SerialName("game_modes") val gameModes: List<IgdbGameMode>? = null,
+    val franchises: List<IgdbFranchise>? = null,
+    val collection: IgdbCollection? = null,
+    val collections: List<IgdbCollection>? = null
+)
+
+@Serializable
+data class IgdbCollection(
+    val id: Long? = null,
+    val name: String? = null
+)
+
+@Serializable
+data class IgdbFranchise(
+    val id: Long? = null,
+    val name: String = ""
 )
 
 @Serializable

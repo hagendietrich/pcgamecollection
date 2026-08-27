@@ -3,6 +3,7 @@ package com.github.hagendietrich.pcgamecollection.data.repository
 import com.github.hagendietrich.pcgamecollection.data.api.*
 import com.github.hagendietrich.pcgamecollection.data.dao.GameDao
 import com.github.hagendietrich.pcgamecollection.data.dao.IgnoredGameDao
+import com.github.hagendietrich.pcgamecollection.data.dao.WishlistGameDao
 import io.mockk.mockk
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -14,6 +15,7 @@ class GameRepositoryTest {
     private lateinit var repository: GameRepository
     private val gameDao = mockk<GameDao>()
     private val ignoredGameDao = mockk<IgnoredGameDao>()
+    private val wishlistGameDao = mockk<WishlistGameDao>()
     private val igdbClient = mockk<IgdbClient>()
     private val steamClient = mockk<SteamClient>()
     private val gogClient = mockk<GogClient>()
@@ -27,6 +29,7 @@ class GameRepositoryTest {
         repository = GameRepository(
             gameDao,
             ignoredGameDao,
+            wishlistGameDao,
             igdbClient,
             steamClient,
             gogClient,

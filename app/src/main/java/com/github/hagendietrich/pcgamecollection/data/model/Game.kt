@@ -34,7 +34,10 @@ data class Game(
     val publishers: List<String> = emptyList(),
     val themes: List<String> = emptyList(),
     val keywords: List<String> = emptyList(),
+    val franchises: List<String> = emptyList(),
+    val series: List<String> = emptyList(),
     val gameModes: List<String> = emptyList(),
     val storeUrls: Map<String, String> = emptyMap(),
+    val personalRating: Int? = null,
     val dateAdded: Long = System.currentTimeMillis() // Timestamp when the game was added to the database
 )

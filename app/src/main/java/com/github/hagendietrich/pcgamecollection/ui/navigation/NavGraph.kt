@@ -1,5 +1,6 @@
 package com.github.hagendietrich.pcgamecollection.ui.navigation
 
+import androidx.compose.animation.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavHostController
@@ -45,7 +46,15 @@ fun AppNavGraph(
         startDestination = startDestination,
         modifier = modifier
     ) {
-        composable(Screen.Library.route) {
+        composable(
+            route = Screen.Library.route,
+            exitTransition = {
+                slideOutHorizontally(targetOffsetX = { -it / 3 }) + fadeOut()
+            },
+            popEnterTransition = {
+                slideInHorizontally(initialOffsetX = { -it / 3 }) + fadeIn()
+            }
+        ) {
             val viewModel: GameListViewModel = viewModel(
                 factory = object : ViewModelProvider.Factory {
                     override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -124,7 +133,19 @@ fun AppNavGraph(
         }
         composable(
             route = Screen.GameDetails.route,
-            arguments = listOf(navArgument("gameId") { type = NavType.IntType })
+            arguments = listOf(navArgument("gameId") { type = NavType.IntType }),
+            enterTransition = {
+                slideInHorizontally(initialOffsetX = { it })
+            },
+            exitTransition = {
+                slideOutHorizontally(targetOffsetX = { -it })
+            },
+            popEnterTransition = {
+                slideInHorizontally(initialOffsetX = { -it })
+            },
+            popExitTransition = {
+                slideOutHorizontally(targetOffsetX = { it })
+            }
         ) { backStackEntry ->
             val gameId = backStackEntry.arguments?.getInt("gameId") ?: 0
             val viewModel: GameDetailViewModel = viewModel(

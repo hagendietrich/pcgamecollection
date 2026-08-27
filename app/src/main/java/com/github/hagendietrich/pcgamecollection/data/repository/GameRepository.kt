@@ -138,6 +138,8 @@ class GameRepository(
                     publishers = fullMatch.involvedCompanies?.filter { it.publisher }?.mapNotNull { it.company?.name } ?: emptyList(),
                     themes = fullMatch.themes?.map { it.name } ?: emptyList(),
                     keywords = fullMatch.keywords?.map { it.name } ?: emptyList(),
+                    franchises = fullMatch.franchises?.map { it.name } ?: emptyList(),
+                    series = (listOfNotNull(fullMatch.collection?.name) + (fullMatch.collections?.mapNotNull { it.name } ?: emptyList())).distinct(),
                     gameModes = mapIgdbGameModes(fullMatch.gameModes),
                     storeUrls = extractStoreUrls(fullMatch, mapOf("BATTLE_NET" to storeId))
                 )
@@ -281,6 +283,8 @@ class GameRepository(
                     publishers = fullMatch.involvedCompanies?.filter { it.publisher }?.mapNotNull { it.company?.name } ?: emptyList(),
                     themes = fullMatch.themes?.map { it.name } ?: emptyList(),
                     keywords = fullMatch.keywords?.map { it.name } ?: emptyList(),
+                    franchises = fullMatch.franchises?.map { it.name } ?: emptyList(),
+                    series = (listOfNotNull(fullMatch.collection?.name) + (fullMatch.collections?.mapNotNull { it.name } ?: emptyList())).distinct(),
                     gameModes = mapIgdbGameModes(fullMatch.gameModes),
                     storeUrls = extractStoreUrls(fullMatch, mapOf("EPIC" to record.catalogItemId))
                 )
@@ -390,6 +394,8 @@ class GameRepository(
                     publishers = fullMatch.involvedCompanies?.filter { it.publisher }?.mapNotNull { it.company?.name } ?: emptyList(),
                     themes = fullMatch.themes?.map { it.name } ?: emptyList(),
                     keywords = fullMatch.keywords?.map { it.name } ?: emptyList(),
+                    franchises = fullMatch.franchises?.map { it.name } ?: emptyList(),
+                    series = (listOfNotNull(fullMatch.collection?.name) + (fullMatch.collections?.mapNotNull { it.name } ?: emptyList())).distinct(),
                     gameModes = mapIgdbGameModes(fullMatch.gameModes),
                     storeUrls = extractStoreUrls(fullMatch, mapOf("UBISOFT" to titleId))
                 )
@@ -617,6 +623,8 @@ class GameRepository(
                     publishers = igdbGame.involvedCompanies?.filter { it.publisher }?.mapNotNull { it.company?.name } ?: emptyList(),
                     themes = igdbGame.themes?.map { it.name } ?: emptyList(),
                     keywords = igdbGame.keywords?.map { it.name } ?: emptyList(),
+                    franchises = igdbGame.franchises?.map { it.name } ?: emptyList(),
+                    series = (listOfNotNull(igdbGame.collection?.name) + (igdbGame.collections?.mapNotNull { it.name } ?: emptyList())).distinct(),
                     gameModes = mapIgdbGameModes(igdbGame.gameModes),
                     storeUrls = extractStoreUrls(igdbGame, mapOf("STEAM" to primaryAppId)).toMutableMap().apply {
                         if (!containsKey("Steam")) put("Steam", "https://store.steampowered.com/app/$primaryAppId")
@@ -810,6 +818,8 @@ class GameRepository(
                     publishers = igdbGame.involvedCompanies?.filter { it.publisher }?.mapNotNull { it.company?.name } ?: emptyList(),
                     themes = igdbGame.themes?.map { it.name } ?: emptyList(),
                     keywords = igdbGame.keywords?.map { it.name } ?: emptyList(),
+                    franchises = igdbGame.franchises?.map { it.name } ?: emptyList(),
+                    series = (listOfNotNull(igdbGame.collection?.name) + (igdbGame.collections?.mapNotNull { it.name } ?: emptyList())).distinct(),
                     gameModes = mapIgdbGameModes(igdbGame.gameModes),
                     storeUrls = extractStoreUrls(igdbGame, mapOf("GOG" to primaryGogId))
                 )
@@ -942,6 +952,8 @@ class GameRepository(
                     publishers = igdbGame.involvedCompanies?.filter { it.publisher }?.mapNotNull { it.company?.name } ?: emptyList(),
                     themes = igdbGame.themes?.map { it.name } ?: emptyList(),
                     keywords = igdbGame.keywords?.map { it.name } ?: emptyList(),
+                    franchises = igdbGame.franchises?.map { it.name } ?: emptyList(),
+                    series = (listOfNotNull(igdbGame.collection?.name) + (igdbGame.collections?.mapNotNull { it.name } ?: emptyList())).distinct(),
                     gameModes = mapIgdbGameModes(igdbGame.gameModes),
                     storeUrls = extractStoreUrls(igdbGame, emptyMap())
                 )
@@ -1018,6 +1030,8 @@ class GameRepository(
                 publishers = igdbGame.involvedCompanies?.filter { it.publisher }?.mapNotNull { it.company?.name } ?: emptyList(),
                 themes = igdbGame.themes?.map { it.name } ?: emptyList(),
                 keywords = igdbGame.keywords?.map { it.name } ?: emptyList(),
+                franchises = igdbGame.franchises?.map { it.name } ?: emptyList(),
+                series = (listOfNotNull(igdbGame.collection?.name) + (igdbGame.collections?.mapNotNull { it.name } ?: emptyList())).distinct(),
                 gameModes = mapIgdbGameModes(igdbGame.gameModes),
                 storeUrls = extractStoreUrls(igdbGame, mapOf(sourceKey to unmatchedGame.storeId))
             )
@@ -1139,6 +1153,8 @@ class GameRepository(
             publishers = igdbGame.involvedCompanies?.filter { it.publisher }?.mapNotNull { it.company?.name } ?: emptyList(),
             themes = igdbGame.themes?.map { it.name } ?: emptyList(),
             keywords = igdbGame.keywords?.map { it.name } ?: emptyList(),
+            franchises = igdbGame.franchises?.map { it.name } ?: emptyList(),
+            series = (listOfNotNull(igdbGame.collection?.name) + (igdbGame.collections?.mapNotNull { it.name } ?: emptyList())).distinct(),
             gameModes = if (existingGame.isGameModeManual) existingGame.gameModes else mapIgdbGameModes(igdbGame.gameModes),
             storeUrls = extractStoreUrls(igdbGame, existingGame.sourceIds)
             // Keep: id, platforms, isOwned, sourceIds, playtimes, playtimeMinutes, labels, completionStatus
@@ -1190,6 +1206,10 @@ class GameRepository(
 
     fun getAllGamesSortedByDateAdded(): Flow<List<Game>> {
         return gameDao.getAllGamesSortedByDateAdded()
+    }
+
+    fun getGameByIdFlow(id: Int): Flow<Game?> {
+        return gameDao.getGameByIdFlow(id)
     }
 
     suspend fun getGameByTitle(title: String): Game? {
@@ -1546,12 +1566,14 @@ class GameRepository(
         val existing = gameDao.getGameById(gameId) ?: return@withContext
         val igdbId = existing.igdbId ?: return@withContext
 
-        // Refresh if missing summary OR screenshots OR companies OR store links OR game modes
+        // Refresh if missing summary OR screenshots OR companies OR store links OR game modes OR franchises OR series
         val needsRefresh = existing.summary.isNullOrBlank() || 
                            existing.screenshotUrls.isEmpty() || 
                            existing.developers.isEmpty() ||
                            existing.storeUrls.isEmpty() ||
-                           existing.gameModes.isEmpty()
+                           existing.gameModes.isEmpty() ||
+                           existing.franchises.isEmpty() ||
+                           existing.series.isEmpty()
 
         if (!needsRefresh) return@withContext
 
@@ -1572,7 +1594,11 @@ class GameRepository(
             return@withContext
         }
 
-        val updatedGame = existing.copy(
+        // Fetch the absolute latest version of the game from DB right before updating
+        // to avoid overwriting user changes made while we were fetching metadata.
+        val latestExisting = gameDao.getGameById(gameId) ?: return@withContext
+
+        val updatedGame = latestExisting.copy(
             summary = igdbGame.summary,
             screenshotUrls = igdbGame.screenshots?.map { getFullScreenshotUrl(it.url) } ?: emptyList(),
             igdbUrl = igdbGame.url,
@@ -1582,9 +1608,11 @@ class GameRepository(
             publishers = igdbGame.involvedCompanies?.filter { it.publisher }?.mapNotNull { it.company?.name } ?: emptyList(),
             themes = igdbGame.themes?.map { it.name } ?: emptyList(),
             keywords = igdbGame.keywords?.map { it.name } ?: emptyList(),
-            gameModes = if (existing.isGameModeManual) existing.gameModes else mapIgdbGameModes(igdbGame.gameModes),
-            genres = if (existing.isGenreManual) existing.genres else (igdbGame.genres?.map { it.name } ?: existing.genres),
-            storeUrls = extractStoreUrls(igdbGame, existing.sourceIds)
+            franchises = igdbGame.franchises?.map { it.name } ?: emptyList(),
+            series = (listOfNotNull(igdbGame.collection?.name) + (igdbGame.collections?.mapNotNull { it.name } ?: emptyList())).distinct(),
+            gameModes = if (latestExisting.isGameModeManual) latestExisting.gameModes else mapIgdbGameModes(igdbGame.gameModes),
+            genres = if (latestExisting.isGenreManual) latestExisting.genres else (igdbGame.genres?.map { it.name } ?: latestExisting.genres),
+            storeUrls = extractStoreUrls(igdbGame, latestExisting.sourceIds)
         )
         
         gameDao.updateGame(updatedGame)

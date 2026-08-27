@@ -1,7 +1,7 @@
 package com.github.hagendietrich.pcgamecollection.ui.screens
 
 import android.content.Intent
-import android.content.res.Configuration
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTransformGestures
@@ -11,12 +11,11 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Language
-import androidx.compose.material.icons.filled.Star
-import androidx.compose.material.icons.filled.Store
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -27,17 +26,21 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.net.toUri
 import coil.compose.AsyncImage
 import com.github.hagendietrich.pcgamecollection.R
+import com.github.hagendietrich.pcgamecollection.data.api.models.IgdbGame
+import com.github.hagendietrich.pcgamecollection.data.model.CompletionStatus
+import com.github.hagendietrich.pcgamecollection.data.model.Game
+import com.github.hagendietrich.pcgamecollection.ui.components.*
 import com.github.hagendietrich.pcgamecollection.ui.viewmodel.GameDetailUiState
 import com.github.hagendietrich.pcgamecollection.ui.viewmodel.GameDetailViewModel
 import java.text.SimpleDateFormat
@@ -49,15 +52,27 @@ import kotlin.math.roundToInt
 @Composable
 fun GameDetailScreen(
     viewModel: GameDetailViewModel,
-    onBack: () -> Unit
+    onBack: () -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
     val scrollState = rememberScrollState()
-    val configuration = LocalConfiguration.current
-    val isWidescreen = configuration.screenWidthDp > 840 || (configuration.orientation == Configuration.ORIENTATION_LANDSCAPE && configuration.screenWidthDp > 480)
     
     var fullScreenImageUrl by remember { mutableStateOf<String?>(null) }
+    
+    // Dialog states
+    var showPlaytimePicker by remember { mutableStateOf(value = false) }
+    var showManageLabelsDialog by remember { mutableStateOf(false) }
+    var showManageGenresDialog by remember { mutableStateOf(false) }
+    var showManageSeriesDialog by remember { mutableStateOf(false) }
+    var showManageFranchisesDialog by remember { mutableStateOf(false) }
+    var showManagePlatformsDialog by remember { mutableStateOf(false) }
+    var showReleaseDatePicker by remember { mutableStateOf(false) }
+    var showEditModeDialog by remember { mutableStateOf(false) }
+    var showAlternativeCoversDialog by remember { mutableStateOf(false) }
+    var showDeleteConfirmDialog by remember { mutableStateOf(false) }
+    var showReMatchDialog by remember { mutableStateOf(false) }
+    var showRatingPicker by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -72,9 +87,22 @@ fun GameDetailScreen(
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = (scrollState.value / 300f).coerceIn(0f, 0.9f))
-                )
+                actions = {
+                    if (uiState is GameDetailUiState.Success) {
+                        val isSearching by viewModel.isSearchingReMatch.collectAsState()
+                        if (isSearching) {
+                            CircularProgressIndicator(modifier = Modifier.size(24.dp).padding(4.dp), strokeWidth = 2.dp)
+                        } else {
+                            IconButton(onClick = { 
+                                val game = (uiState as GameDetailUiState.Success).game
+                                viewModel.searchForReMatch(game.title)
+                                showReMatchDialog = true 
+                            }) {
+                                Icon(Icons.Default.Refresh, contentDescription = "Re-match IGDB Metadata")
+                            }
+                        }
+                    }
+                }
             )
         }
     ) { innerPadding ->
@@ -92,170 +120,414 @@ fun GameDetailScreen(
             is GameDetailUiState.Success -> {
                 val game = state.game
                 
-                if (isWidescreen) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(innerPadding)
-                    ) {
-                        // Screenshots Column
-                        Box(
-                            modifier = Modifier
-                                .weight(1.2f)
-                                .fillMaxHeight()
-                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
-                        ) {
-                            if (game.screenshotUrls.isNotEmpty()) {
-                                val pagerState = rememberPagerState(pageCount = { game.screenshotUrls.size })
-                                HorizontalPager(
-                                    state = pagerState,
-                                    modifier = Modifier.fillMaxSize()
-                                ) { page ->
-                                    AsyncImage(
-                                        model = game.screenshotUrls[page],
-                                        contentDescription = "Screenshot ${page + 1}",
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .clickable { 
-                                                fullScreenImageUrl = game.screenshotUrls[page]
-                                            },
-                                        contentScale = ContentScale.Fit // Use Fit in widescreen to avoid distortion
-                                    )
-                                }
-                                
-                                // Pager Indicators
-                                if (game.screenshotUrls.size > 1) {
-                                    Row(
-                                        Modifier
-                                            .height(32.dp)
-                                            .fillMaxWidth()
-                                            .align(Alignment.BottomCenter)
-                                            .padding(bottom = 12.dp),
-                                        horizontalArrangement = Arrangement.Center
-                                    ) {
-                                        repeat(game.screenshotUrls.size) { iteration ->
-                                            val color = if (pagerState.currentPage == iteration) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                                            Box(
-                                                modifier = Modifier
-                                                    .padding(3.dp)
-                                                    .clip(CircleShape)
-                                                    .background(color)
-                                                    .size(10.dp)
-                                            )
-                                        }
-                                    }
-                                }
-                            } else {
-                                AsyncImage(
-                                    model = game.coverImageUrl,
-                                    contentDescription = null,
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .clickable { 
-                                            fullScreenImageUrl = game.coverImageUrl
-                                        },
-                                    contentScale = ContentScale.Fit
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(innerPadding)
+                        .verticalScroll(scrollState)
+                        .padding(24.dp),
+                    horizontalAlignment = Alignment.Start
+                ) {
+                    // 1. Cover
+                    Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                        Box(modifier = Modifier.wrapContentSize()) {
+                            AsyncImage(
+                                model = game.coverImageUrl,
+                                contentDescription = game.title,
+                                modifier = Modifier
+                                    .height(320.dp)
+                                    .aspectRatio(0.75f)
+                                    .clickable { fullScreenImageUrl = game.coverImageUrl },
+                                contentScale = ContentScale.Crop
+                            )
+                            
+                            val isFetchingCovers by viewModel.isFetchingCovers.collectAsState()
+                            if (isFetchingCovers) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(24.dp).align(Alignment.TopEnd).padding(8.dp),
+                                    strokeWidth = 2.dp
                                 )
-                            }
-                        }
-
-                        // Details Column
-                        Surface(
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxHeight(),
-                            color = MaterialTheme.colorScheme.surface,
-                            tonalElevation = 1.dp
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .verticalScroll(rememberScrollState())
-                                    .padding(24.dp)
-                            ) {
-                                GameDetailsContent(game, context)
-                            }
-                        }
-                    }
-                } else {
-                    Box(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .verticalScroll(scrollState)
-                        ) {
-                            // Parallax Header (Screenshots)
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .aspectRatio(16f / 9f) // Use aspect ratio instead of fixed height
-                                    .graphicsLayer {
-                                        translationY = scrollState.value * 0.5f
-                                        alpha = (1f - (scrollState.value / 600f)).coerceIn(0f, 1f)
-                                    }
-                            ) {
-                                if (game.screenshotUrls.isNotEmpty()) {
-                                    val pagerState = rememberPagerState(pageCount = { game.screenshotUrls.size })
-                                    HorizontalPager(
-                                        state = pagerState,
-                                        modifier = Modifier.fillMaxSize()
-                                    ) { page ->
-                                        AsyncImage(
-                                            model = game.screenshotUrls[page],
-                                            contentDescription = "Screenshot ${page + 1}",
-                                            modifier = Modifier.fillMaxSize().clickable { 
-                                                fullScreenImageUrl = game.screenshotUrls[page]
-                                            },
-                                            contentScale = ContentScale.Crop
+                            } else {
+                                IconButton(
+                                    onClick = { 
+                                        viewModel.fetchAlternativeCovers()
+                                        showAlternativeCoversDialog = true 
+                                    },
+                                    modifier = Modifier.align(Alignment.TopEnd).padding(4.dp)
+                                ) {
+                                    Surface(
+                                        shape = CircleShape,
+                                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
+                                        modifier = Modifier.size(36.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Edit, 
+                                            contentDescription = "Change Cover",
+                                            modifier = Modifier.padding(8.dp),
+                                            tint = MaterialTheme.colorScheme.primary
                                         )
                                     }
-                                    
-                                    // Pager Indicators
-                                    if (game.screenshotUrls.size > 1) {
-                                        Row(
-                                            Modifier
-                                                .height(24.dp)
-                                                .fillMaxWidth()
-                                                .align(Alignment.BottomCenter)
-                                                .padding(bottom = 8.dp),
-                                            horizontalArrangement = Arrangement.Center
-                                        ) {
-                                            repeat(game.screenshotUrls.size) { iteration ->
-                                                val color = if (pagerState.currentPage == iteration) Color.White else Color.White.copy(alpha = 0.5f)
-                                                Box(
-                                                    modifier = Modifier
-                                                        .padding(2.dp)
-                                                        .clip(CircleShape)
-                                                        .background(color)
-                                                        .size(8.dp)
-                                                )
-                                            }
-                                        }
-                                    }
-                                } else {
-                                    AsyncImage(
-                                        model = game.coverImageUrl,
-                                        contentDescription = null,
-                                        modifier = Modifier.fillMaxSize().clickable { 
-                                            fullScreenImageUrl = game.coverImageUrl
-                                        },
-                                        contentScale = ContentScale.Crop
-                                    )
-                                }
-                            }
-
-                            // Content Body
-                            Surface(
-                                modifier = Modifier.fillMaxWidth(),
-                                color = MaterialTheme.colorScheme.surface,
-                                tonalElevation = 2.dp
-                            ) {
-                                Column(modifier = Modifier.padding(20.dp)) {
-                                    GameDetailsContent(game, context)
                                 }
                             }
                         }
                     }
+                    
+                    Spacer(modifier = Modifier.height(24.dp))
+                    
+                    // 2. Released
+                    InfoRow(label = "Released", value = game.releaseDate ?: "Add Release Date", isClickable = true, onClick = { showReleaseDatePicker = true })
+                    
+                    // 3. Status
+                    StatusRow(status = game.completionStatus, onStatusChange = { viewModel.updateGame(game.copy(completionStatus = it)) })
+                    
+                    // 4. Playtime
+                    val hours = game.playtimeMinutes / 60
+                    val minutes = game.playtimeMinutes % 60
+                    InfoRow(label = "Playtime", value = "${hours}h ${minutes}m", isClickable = true, onClick = { showPlaytimePicker = true })
+                    
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    // 5. Platforms
+                    ManageableDetailRow(
+                        label = "Platforms",
+                        items = game.platforms,
+                        onLongClick = { showManagePlatformsDialog = true },
+                        chipColor = { platform ->
+                            val isOnline = platform == "Steam" || platform == "GOG" || platform == "Epic" || platform == "Ubisoft" || platform == "Battle.net"
+                            if (isOnline) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f)
+                        }
+                    )
+                    
+                    // 6. Labels
+                    ManageableDetailRow(
+                        label = "Labels",
+                        items = game.labels,
+                        onLongClick = { showManageLabelsDialog = true }
+                    )
+                    
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    // 7. Ratings
+                    if (game.userRating != null || game.criticRating != null) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                            horizontalArrangement = Arrangement.SpaceAround
+                        ) {
+                            if (game.userRating != null) {
+                                RatingItem(label = "Users", rating = game.userRating)
+                            }
+                            if (game.criticRating != null) {
+                                RatingItem(label = "Critics", rating = game.criticRating)
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(16.dp))
+                    }
+
+                    // Your rating Row
+                    InfoRow(
+                        label = "Your rating",
+                        value = "${game.personalRating ?: 0}%",
+                        isClickable = true,
+                        onClick = { showRatingPicker = true }
+                    )
+                    
+                    // 8. Developed by
+                    if (game.developers.isNotEmpty()) {
+                        InfoRow(label = "Developed by", value = game.developers.joinToString(", "))
+                    }
+                    
+                    // 9. Published by
+                    if (game.publishers.isNotEmpty()) {
+                        InfoRow(label = "Published by", value = game.publishers.joinToString(", "))
+                    }
+                    
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    // 10. Modus
+                    ManageableDetailRow(
+                        label = "Modus",
+                        items = game.gameModes,
+                        onLongClick = { showEditModeDialog = true }
+                    )
+                    
+                    // 11. Genres
+                    ManageableDetailRow(
+                        label = "Genres",
+                        items = game.genres,
+                        onLongClick = { showManageGenresDialog = true }
+                    )
+                    
+                    // 11a. Series
+                    ManageableDetailRow(
+                        label = "Series",
+                        items = game.series,
+                        onLongClick = { showManageSeriesDialog = true }
+                    )
+                    
+                    // 11b. Franchises
+                    ManageableDetailRow(
+                        label = "Franchises",
+                        items = game.franchises,
+                        onLongClick = { showManageFranchisesDialog = true }
+                    )
+                    
+                    // 12. Categories (Themes/Keywords, excluding genres)
+                    val categories = (game.themes + game.keywords).distinct()
+                    ManageableDetailRow(
+                        label = "Categories",
+                        items = categories,
+                        onLongClick = {} // Read-only enrichment usually
+                    )
+                    
+                    // 13. Official Links
+                    LinksDetailRow(
+                        label = "Official Links",
+                        igdbUrl = game.igdbUrl,
+                        storeUrls = game.storeUrls,
+                        context = context
+                    )
+                    
+                    Spacer(modifier = Modifier.height(24.dp))
+                    
+                    // 14. Screenshots
+                    if (game.screenshotUrls.isNotEmpty()) {
+                        Text("Screenshots:", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.height(12.dp))
+                        val pagerState = rememberPagerState(pageCount = { game.screenshotUrls.size })
+                        Box(modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f)) {
+                            HorizontalPager(
+                                state = pagerState,
+                                modifier = Modifier.fillMaxSize()
+                            ) { page ->
+                                AsyncImage(
+                                    model = game.screenshotUrls[page],
+                                    contentDescription = "Screenshot ${page + 1}",
+                                    modifier = Modifier.fillMaxSize().clickable { 
+                                        fullScreenImageUrl = game.screenshotUrls[page]
+                                    },
+                                    contentScale = ContentScale.Crop
+                                )
+                            }
+                            
+                            // Pager Indicators
+                            if (game.screenshotUrls.size > 1) {
+                                Row(
+                                    Modifier
+                                        .height(24.dp)
+                                        .fillMaxWidth()
+                                        .align(Alignment.BottomCenter)
+                                        .padding(bottom = 8.dp),
+                                    horizontalArrangement = Arrangement.Center
+                                ) {
+                                    repeat(game.screenshotUrls.size) { iteration ->
+                                        val color = if (pagerState.currentPage == iteration) Color.White else Color.White.copy(alpha = 0.5f)
+                                        Box(
+                                            modifier = Modifier
+                                                .padding(2.dp)
+                                                .clip(CircleShape)
+                                                .background(color)
+                                                .size(8.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(32.dp))
+                    }
+                    
+                    // 15. About
+                    if (!game.summary.isNullOrBlank()) {
+                        Text(
+                            text = "About:",
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = game.summary,
+                            style = MaterialTheme.typography.bodyLarge,
+                            modifier = Modifier.padding(top = 8.dp),
+                            textAlign = TextAlign.Justify
+                        )
+                        Spacer(modifier = Modifier.height(32.dp))
+                    }
+                    
+                    // 16. Date Added
+                    val dateAddedStr = remember(game.dateAdded) {
+                        SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(game.dateAdded))
+                    }
+                    InfoRow(label = "Date Added", value = dateAddedStr)
+                    
+                    Spacer(modifier = Modifier.height(32.dp))
+                    
+                    // 17. Delete Button
+                    Button(
+                        onClick = { showDeleteConfirmDialog = true },
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(stringResource(R.string.detail_remove))
+                    }
+                    
+                    Spacer(modifier = Modifier.height(64.dp))
+                }
+                
+                // Dialogs
+                if (showDeleteConfirmDialog) {
+                    DeleteConfirmDialog(
+                        game = game,
+                        onDelete = { andIgnore: Boolean ->
+                            viewModel.deleteGame(game, andIgnore)
+                            onBack()
+                        },
+                        onDismiss = { showDeleteConfirmDialog = false }
+                    )
+                }
+
+                if (showPlaytimePicker) {
+                    PlaytimePickerDialog(
+                        initialMinutes = game.playtimes["Manual"] ?: 0,
+                        onDismiss = { showPlaytimePicker = false },
+                        onConfirm = { newMinutes: Int ->
+                            val updatedPlaytimes = game.playtimes.toMutableMap()
+                            updatedPlaytimes["Manual"] = newMinutes
+                            val totalPlaytime = updatedPlaytimes.values.sum()
+                            viewModel.updateGame(game.copy(
+                                playtimes = updatedPlaytimes,
+                                playtimeMinutes = totalPlaytime
+                            ))
+                            showPlaytimePicker = false
+                        }
+                    )
+                }
+
+                if (showReleaseDatePicker) {
+                    SetReleaseDateDialog(
+                        initialDate = game.releaseDate ?: "",
+                        onConfirm = { newDate: String ->
+                            viewModel.updateReleaseDate(newDate)
+                            showReleaseDatePicker = false 
+                        },
+                        onDismiss = { showReleaseDatePicker = false }
+                    )
+                }
+
+                if (showManageLabelsDialog) {
+                    val allLabels by viewModel.allLabels.collectAsState()
+                    ManageTagsDialog(
+                        title = "Manage Labels",
+                        currentTags = game.labels,
+                        allSuggestions = allLabels,
+                        onAdd = { viewModel.addLabelToGame(it) },
+                        onRemove = { viewModel.removeLabelFromGame(it) },
+                        onDismiss = { showManageLabelsDialog = false }
+                    )
+                }
+
+                if (showManageGenresDialog) {
+                    val allGenres by viewModel.allGenres.collectAsState()
+                    ManageTagsDialog(
+                        title = "Manage Genres",
+                        currentTags = game.genres,
+                        allSuggestions = allGenres,
+                        onAdd = { viewModel.addGenreToGame(it) },
+                        onRemove = { viewModel.removeGenreFromGame(it) },
+                        onDismiss = { showManageGenresDialog = false }
+                    )
+                }
+
+                if (showManageSeriesDialog) {
+                    val allSeries by viewModel.allSeries.collectAsState()
+                    ManageTagsDialog(
+                        title = "Manage Series",
+                        currentTags = game.series,
+                        allSuggestions = allSeries,
+                        onAdd = { viewModel.addSeriesToGame(it) },
+                        onRemove = { viewModel.removeSeriesFromGame(it) },
+                        onDismiss = { showManageSeriesDialog = false }
+                    )
+                }
+
+                if (showManageFranchisesDialog) {
+                    val allFranchises by viewModel.allFranchises.collectAsState()
+                    ManageTagsDialog(
+                        title = "Manage Franchises",
+                        currentTags = game.franchises,
+                        allSuggestions = allFranchises,
+                        onAdd = { viewModel.addFranchiseToGame(it) },
+                        onRemove = { viewModel.removeFranchiseFromGame(it) },
+                        onDismiss = { showManageFranchisesDialog = false }
+                    )
+                }
+
+                if (showManagePlatformsDialog) {
+                    val allPlatforms by viewModel.allPlatforms.collectAsState()
+                    ManageTagsDialog(
+                        title = "Manage Platforms",
+                        currentTags = game.platforms,
+                        allSuggestions = allPlatforms,
+                        onAdd = { viewModel.addPlatformToGame(it) },
+                        onRemove = { viewModel.removePlatformFromGame(it) },
+                        onDismiss = { showManagePlatformsDialog = false }
+                    )
+                }
+
+                if (showEditModeDialog) {
+                    EditModeDialog(
+                        currentModes = game.gameModes,
+                        onConfirm = { modes: List<String> ->
+                            viewModel.updateGameModes(modes)
+                            showEditModeDialog = false 
+                        },
+                        onDismiss = { showEditModeDialog = false }
+                    )
+                }
+
+                if (showAlternativeCoversDialog) {
+                    val alternativeCovers by viewModel.alternativeCovers.collectAsState()
+                    val isFetching by viewModel.isFetchingCovers.collectAsState()
+
+                    AlternativeCoversDialog(
+                        covers = alternativeCovers,
+                        isFetching = isFetching,
+                        onSelect = { url: String ->
+                            viewModel.updateGameCover(url)
+                            showAlternativeCoversDialog = false 
+                        },
+                        onDismiss = { 
+                            viewModel.clearAlternativeCovers()
+                            showAlternativeCoversDialog = false 
+                        }
+                    )
+                }
+                
+                if (showReMatchDialog) {
+                    val reMatchResults by viewModel.reMatchResults.collectAsState()
+                    val isSearching by viewModel.isSearchingReMatch.collectAsState()
+                    ReMatchDialog(
+                        initialTitle = game.title,
+                        candidates = reMatchResults,
+                        isSearching = isSearching,
+                        onSearch = { query: String -> viewModel.searchForReMatch(query) },
+                        onSelect = { candidate: IgdbGame ->
+                            viewModel.applyReMatch(candidate)
+                            showReMatchDialog = false
+                        },
+                        onDismiss = {
+                            viewModel.clearReMatchResults()
+                            showReMatchDialog = false
+                        }
+                    )
+                }
+
+                if (showRatingPicker) {
+                    PersonalRatingDialog(
+                        initialRating = game.personalRating,
+                        onConfirm = { 
+                            viewModel.updatePersonalRating(it)
+                            showRatingPicker = false 
+                        },
+                        onDismiss = { showRatingPicker = false }
+                    )
                 }
             }
         }
@@ -268,10 +540,10 @@ fun GameDetailScreen(
             properties = DialogProperties(
                 usePlatformDefaultWidth = false,
                 dismissOnBackPress = true,
-                dismissOnClickOutside = false // Prevent accidental closure while zooming
+                dismissOnClickOutside = false
             )
         ) {
-            var scale by remember { mutableStateOf(1f) }
+            var scale by remember { mutableFloatStateOf(1f) }
             var offset by remember { mutableStateOf(Offset.Zero) }
 
             Box(
@@ -288,7 +560,6 @@ fun GameDetailScreen(
                         .pointerInput(Unit) {
                             detectTransformGestures { _, pan, zoom, _ ->
                                 scale = (scale * zoom).coerceIn(1f, 5f)
-                                // Only pan if zoomed in
                                 if (scale > 1f) {
                                     offset += pan
                                 } else {
@@ -316,150 +587,279 @@ fun GameDetailScreen(
 }
 
 @Composable
-fun GameDetailsContent(
-    game: com.github.hagendietrich.pcgamecollection.data.model.Game,
-    context: android.content.Context
-) {
-    // Basic Info Row (Rating & Date)
+fun InfoRow(label: String, value: String, isClickable: Boolean = false, onClick: () -> Unit = {}) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            if (game.userRating != null) {
-                Icon(Icons.Default.Star, contentDescription = "User Rating", tint = Color(0xFFFFD700), modifier = Modifier.size(18.dp))
-                Text(
-                    text = stringResource(R.string.rating_users) + " ${game.userRating.roundToInt()}%",
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.padding(start = 4.dp, end = 12.dp)
-                )
+        Text(text = "$label: ", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyLarge.copy(
+                textDecoration = if (isClickable && (value.contains("Add") || value.isBlank())) androidx.compose.ui.text.style.TextDecoration.Underline else null
+            ),
+            modifier = Modifier.clickable(enabled = isClickable) { onClick() }
+        )
+    }
+}
+
+@Composable
+fun StatusRow(status: CompletionStatus, onStatusChange: (CompletionStatus) -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(text = "Status: ", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
+        var expanded by remember { mutableStateOf(false) }
+        Box {
+            TextButton(onClick = { expanded = true }) {
+                Text(status.name, style = MaterialTheme.typography.bodyLarge)
             }
-            if (game.criticRating != null) {
-                Icon(Icons.Default.Star, contentDescription = "Critic Rating", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
-                Text(
-                    text = stringResource(R.string.rating_critics) + " ${game.criticRating.roundToInt()}%",
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.padding(start = 4.dp)
-                )
+            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                CompletionStatus.entries.forEach { entry ->
+                    DropdownMenuItem(
+                        text = { Text(entry.name) },
+                        onClick = {
+                            onStatusChange(entry)
+                            expanded = false
+                        }
+                    )
+                }
             }
         }
-        if (game.releaseDate != null) {
+    }
+}
+
+@Composable
+fun RatingItem(label: String, rating: Double) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.Star, contentDescription = null, tint = Color(0xFFFFD700), modifier = Modifier.size(20.dp))
             Text(
-                text = game.releaseDate,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.secondary
+                text = "${rating.roundToInt()}%",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(start = 4.dp)
             )
         }
+        Text(text = label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
+}
 
-    Spacer(modifier = Modifier.height(16.dp))
-
-    // Companies
-    if (game.developers.isNotEmpty()) {
-        Text(
-            text = "Developed by: ${game.developers.joinToString(", ")}",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-    }
-    if (game.publishers.isNotEmpty()) {
-        Text(
-            text = "Published by: ${game.publishers.joinToString(", ")}",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-    }
-
-    Spacer(modifier = Modifier.height(24.dp))
-
-    // Store Links
-    if (game.storeUrls.isNotEmpty() || !game.igdbUrl.isNullOrBlank()) {
-        Text("Official Links", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-        OptInFlowRow(modifier = Modifier.padding(top = 8.dp)) {
-            game.storeUrls.forEach { (name, url) ->
-                AssistChip(
-                    onClick = { 
-                        try {
-                            context.startActivity(Intent(Intent.ACTION_VIEW, url.toUri())) 
-                        } catch (e: Exception) {
-                            e.printStackTrace()
-                        }
-                    },
-                    label = { Text(name) },
-                    leadingIcon = { Icon(Icons.Default.Store, contentDescription = null, modifier = Modifier.size(18.dp)) }
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun ManageableDetailRow(
+    label: String,
+    items: List<String>,
+    onLongClick: () -> Unit,
+    chipColor: @Composable (String) -> Color = { MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f) }
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val canExpand = items.isNotEmpty()
+    
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .combinedClickable(
+                onClick = { 
+                    if (canExpand) expanded = !expanded 
+                    else onLongClick()
+                },
+                onLongClick = onLongClick
+            )
+            .padding(vertical = 4.dp)
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(
+                text = "$label: ",
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Bold
+            )
+            
+            if (items.isEmpty()) {
+                Text(
+                    text = "Add...",
+                    style = MaterialTheme.typography.bodyLarge.copy(
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                        textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline
+                    )
                 )
-            }
-            if (!game.igdbUrl.isNullOrBlank()) {
-                AssistChip(
-                    onClick = { 
-                        try {
-                            context.startActivity(Intent(Intent.ACTION_VIEW, game.igdbUrl.toUri())) 
-                        } catch (e: Exception) {
-                            e.printStackTrace()
-                        }
-                    },
-                    label = { Text("IGDB") },
-                    leadingIcon = { Icon(Icons.Default.Language, contentDescription = null, modifier = Modifier.size(18.dp)) }
-                )
+            } else if (!expanded) {
+                OptInFlowRow(
+                    modifier = Modifier.weight(1f),
+                    maxLines = 1,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    items.forEach { item ->
+                        DetailChip(text = item, color = chipColor(item))
+                    }
+                }
             }
         }
-        Spacer(modifier = Modifier.height(24.dp))
-    }
-
-    // Summary
-    if (!game.summary.isNullOrBlank()) {
-        Text(
-            text = "About",
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Bold
-        )
-        Text(
-            text = game.summary,
-            style = MaterialTheme.typography.bodyLarge,
-            modifier = Modifier.padding(top = 8.dp),
-            textAlign = TextAlign.Justify
-        )
-    }
-
-    Spacer(modifier = Modifier.height(24.dp))
-
-    // Genres & Themes
-    if (game.genres.isNotEmpty() || game.themes.isNotEmpty()) {
-        Text("Categories", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-        OptInFlowRow(modifier = Modifier.padding(top = 8.dp)) {
-            game.genres.forEach { genre ->
-                SuggestionChip(onClick = {}, label = { Text(genre) })
-            }
-            game.themes.forEach { theme ->
-                SuggestionChip(onClick = {}, label = { Text(theme) }, colors = SuggestionChipDefaults.suggestionChipColors(containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.4f)))
+        
+        if (expanded && items.isNotEmpty()) {
+            OptInFlowRow(
+                modifier = Modifier.padding(top = 8.dp),
+                horizontalArrangement = Arrangement.Start,
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items.forEach { item ->
+                    DetailChip(text = item, color = chipColor(item))
+                }
             }
         }
     }
+}
 
-    Spacer(modifier = Modifier.height(32.dp))
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun LinksDetailRow(
+    label: String,
+    igdbUrl: String?,
+    storeUrls: Map<String, String>,
+    context: android.content.Context
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val hasLinks = !igdbUrl.isNullOrBlank() || storeUrls.isNotEmpty()
+    
+    val links = mutableListOf<Pair<String, String>>()
+    storeUrls.forEach { (name, url) -> links.add(name to url) }
+    if (!igdbUrl.isNullOrBlank()) links.add("IGDB" to igdbUrl)
 
-    // Date Added
-    val dateAddedStr = remember(game.dateAdded) {
-        SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(game.dateAdded))
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(enabled = hasLinks) { expanded = !expanded }
+            .padding(vertical = 4.dp)
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(
+                text = "$label: ",
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Bold
+            )
+            
+            if (!hasLinks) {
+                Text(
+                    text = "None",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                )
+            } else if (!expanded) {
+                OptInFlowRow(
+                    modifier = Modifier.weight(1f),
+                    maxLines = 1,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    links.forEach { (name, url) ->
+                        DetailChip(
+                            text = name,
+                            leadingIcon = {
+                                Icon(
+                                    if (name == "IGDB") Icons.Default.Language else Icons.Default.Store,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            },
+                            onClick = {
+                                try {
+                                    context.startActivity(Intent(Intent.ACTION_VIEW, url.toUri()))
+                                } catch (e: Exception) {
+                                    e.printStackTrace()
+                                }
+                            }
+                        )
+                    }
+                }
+            }
+        }
+        
+        if (expanded && hasLinks) {
+            OptInFlowRow(
+                modifier = Modifier.padding(top = 8.dp),
+                horizontalArrangement = Arrangement.Start,
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                links.forEach { (name, url) ->
+                    DetailChip(
+                        text = name,
+                        leadingIcon = {
+                            Icon(
+                                if (name == "IGDB") Icons.Default.Language else Icons.Default.Store,
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        },
+                        onClick = {
+                            try {
+                                context.startActivity(Intent(Intent.ACTION_VIEW, url.toUri()))
+                            } catch (e: Exception) {
+                                e.printStackTrace()
+                            }
+                        }
+                    )
+                }
+            }
+        }
     }
-    Text(
-        text = "Date Added: $dateAddedStr",
-        style = MaterialTheme.typography.labelSmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-        modifier = Modifier.fillMaxWidth(),
-        textAlign = TextAlign.Center
-    )
-
-    Spacer(modifier = Modifier.height(64.dp))
 }
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun OptInFlowRow(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+fun OptInFlowRow(
+    modifier: Modifier = Modifier,
+    horizontalArrangement: Arrangement.Horizontal = Arrangement.Start,
+    verticalArrangement: Arrangement.Vertical = Arrangement.Top,
+    maxLines: Int = Int.MAX_VALUE,
+    content: @Composable () -> Unit
+) {
     FlowRow(
         modifier = modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = horizontalArrangement,
+        verticalArrangement = verticalArrangement,
+        maxLines = maxLines,
         content = { content() }
     )
+}
+
+@Composable
+fun DetailChip(
+    text: String,
+    modifier: Modifier = Modifier,
+    color: Color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f),
+    leadingIcon: (@Composable () -> Unit)? = null,
+    onClick: (() -> Unit)? = null
+) {
+    Surface(
+        onClick = onClick ?: {},
+        enabled = onClick != null,
+        shape = MaterialTheme.shapes.extraSmall,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)),
+        color = color,
+        modifier = modifier.padding(vertical = 2.dp)
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+        ) {
+            if (leadingIcon != null) {
+                leadingIcon()
+                Spacer(modifier = Modifier.width(6.dp))
+            }
+            Text(
+                text = text,
+                style = MaterialTheme.typography.bodyLarge
+            )
+        }
+    }
 }

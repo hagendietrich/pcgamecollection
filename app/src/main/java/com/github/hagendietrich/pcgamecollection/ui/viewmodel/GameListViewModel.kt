@@ -124,6 +124,32 @@ class GameListViewModel(
                 }
                 genreMap.toSortedMap()
             }
+            GroupingType.SERIES -> {
+                val seriesMap = mutableMapOf<String, MutableList<Game>>()
+                sorted.forEach { game ->
+                    if (game.series.isEmpty()) {
+                        seriesMap.getOrPut("No Series") { mutableListOf() }.add(game)
+                    } else {
+                        game.series.forEach { series ->
+                            seriesMap.getOrPut(series) { mutableListOf() }.add(game)
+                        }
+                    }
+                }
+                seriesMap.toSortedMap()
+            }
+            GroupingType.FRANCHISE -> {
+                val franchiseMap = mutableMapOf<String, MutableList<Game>>()
+                sorted.forEach { game ->
+                    if (game.franchises.isEmpty()) {
+                        franchiseMap.getOrPut("No Franchise") { mutableListOf() }.add(game)
+                    } else {
+                        game.franchises.forEach { franchise ->
+                            franchiseMap.getOrPut(franchise) { mutableListOf() }.add(game)
+                        }
+                    }
+                }
+                franchiseMap.toSortedMap()
+            }
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
 
