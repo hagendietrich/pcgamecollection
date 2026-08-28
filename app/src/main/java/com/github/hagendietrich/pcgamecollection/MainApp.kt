@@ -66,6 +66,40 @@ class App : Application(), ImageLoaderFactory {
                 db.execSQL("ALTER TABLE `games` ADD COLUMN `series` TEXT NOT NULL DEFAULT '[]'")
             }
         }
+
+        private val MIGRATION_19_20 = object : Migration(19, 20) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `games` ADD COLUMN `parentIgdbId` INTEGER")
+                db.execSQL("ALTER TABLE `wishlist_games` ADD COLUMN `parentIgdbId` INTEGER")
+            }
+        }
+
+        private val MIGRATION_20_21 = object : Migration(20, 21) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `games` ADD COLUMN `category` INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE `wishlist_games` ADD COLUMN `category` INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
+        private val MIGRATION_21_22 = object : Migration(21, 22) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Fix nullability for 'category' in 'games'
+                db.execSQL("CREATE TABLE IF NOT EXISTS `games_new` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `title` TEXT NOT NULL, `platforms` TEXT NOT NULL, `coverImageUrl` TEXT, `releaseDate` TEXT, `isOwned` INTEGER NOT NULL, `igdbId` INTEGER, `sourceIds` TEXT NOT NULL, `playtimes` TEXT NOT NULL, `playtimeMinutes` INTEGER NOT NULL, `genres` TEXT NOT NULL, `labels` TEXT NOT NULL, `completionStatus` TEXT NOT NULL, `isReleaseDateManual` INTEGER NOT NULL, `isGenreManual` INTEGER NOT NULL, `isGameModeManual` INTEGER NOT NULL, `isCoverManual` INTEGER NOT NULL, `summary` TEXT, `screenshotUrls` TEXT NOT NULL, `igdbUrl` TEXT, `userRating` REAL, `criticRating` REAL, `developers` TEXT NOT NULL, `publishers` TEXT NOT NULL, `themes` TEXT NOT NULL, `keywords` TEXT NOT NULL, `franchises` TEXT NOT NULL, `series` TEXT NOT NULL, `gameModes` TEXT NOT NULL, `storeUrls` TEXT NOT NULL, `personalRating` INTEGER, `parentIgdbId` INTEGER, `category` INTEGER, `dateAdded` INTEGER NOT NULL)")
+                
+                // Explicitly list all columns and handle potential missing/null columns like 'storeUrls'
+                db.execSQL("INSERT INTO `games_new` (id, title, platforms, coverImageUrl, releaseDate, isOwned, igdbId, sourceIds, playtimes, playtimeMinutes, genres, labels, completionStatus, isReleaseDateManual, isGenreManual, isGameModeManual, isCoverManual, summary, screenshotUrls, igdbUrl, userRating, criticRating, developers, publishers, themes, keywords, franchises, series, gameModes, storeUrls, personalRating, parentIgdbId, category, dateAdded) " +
+                           "SELECT id, title, platforms, coverImageUrl, releaseDate, isOwned, igdbId, sourceIds, playtimes, playtimeMinutes, genres, labels, completionStatus, isReleaseDateManual, isGenreManual, isGameModeManual, isCoverManual, summary, screenshotUrls, igdbUrl, userRating, criticRating, developers, publishers, themes, keywords, franchises, series, gameModes, COALESCE(storeUrls, '{}'), personalRating, parentIgdbId, category, dateAdded FROM `games` ")
+                db.execSQL("DROP TABLE `games` ")
+                db.execSQL("ALTER TABLE `games_new` RENAME TO `games` ")
+
+                // Fix nullability for 'category' in 'wishlist_games'
+                db.execSQL("CREATE TABLE IF NOT EXISTS `wishlist_games_new` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `title` TEXT NOT NULL, `coverImageUrl` TEXT, `igdbId` INTEGER, `parentIgdbId` INTEGER, `category` INTEGER, `platformPrices` TEXT NOT NULL, `dateAdded` INTEGER NOT NULL, `notes` TEXT)")
+                db.execSQL("INSERT INTO `wishlist_games_new` (id, title, coverImageUrl, igdbId, parentIgdbId, category, platformPrices, dateAdded, notes) " +
+                           "SELECT id, title, coverImageUrl, igdbId, parentIgdbId, category, platformPrices, dateAdded, notes FROM `wishlist_games` ")
+                db.execSQL("DROP TABLE `wishlist_games` ")
+                db.execSQL("ALTER TABLE `wishlist_games_new` RENAME TO `wishlist_games` ")
+            }
+        }
     }
 
     lateinit var database: AppDatabase
@@ -80,7 +114,7 @@ class App : Application(), ImageLoaderFactory {
             AppDatabase::class.java,
             "digital_collection.db"
         )
-        .addMigrations(MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19) // preserve library data on upgrade to v19
+        .addMigrations(MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22) // preserve library data on upgrade to v22
         .fallbackToDestructiveMigration() // safety net for pre-15 versions
         .build()
     }

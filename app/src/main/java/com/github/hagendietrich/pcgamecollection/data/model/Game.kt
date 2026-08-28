@@ -39,5 +39,16 @@ data class Game(
     val gameModes: List<String> = emptyList(),
     val storeUrls: Map<String, String> = emptyMap(),
     val personalRating: Int? = null,
+    val parentIgdbId: Long? = null,
+    val category: Int? = null, // 0 = Main Game, 1 = DLC, 2 = Expansion, 3 = Bundle, etc.
     val dateAdded: Long = System.currentTimeMillis() // Timestamp when the game was added to the database
 )
+
+fun Game.getCategoryDisplay(): String =
+    when (category) {
+        0, 8, 9, 10, 11 -> "Main Game"
+        1, 6, 7, 14 -> "DLC"
+        2, 4 -> "Expansion"
+        3, 13 -> "Bundle"
+        else -> "Unknown"
+    }

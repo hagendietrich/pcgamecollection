@@ -2,6 +2,7 @@ package com.github.hagendietrich.pcgamecollection.data.repository
 
 import com.github.hagendietrich.pcgamecollection.data.api.BattleNetClient
 import com.github.hagendietrich.pcgamecollection.data.api.EpicClient
+import android.util.Log
 import com.github.hagendietrich.pcgamecollection.data.api.GogClient
 import com.github.hagendietrich.pcgamecollection.data.api.IgdbClient
 import com.github.hagendietrich.pcgamecollection.data.api.SteamClient
@@ -141,7 +142,9 @@ class GameRepository(
                     franchises = fullMatch.franchises?.map { it.name } ?: emptyList(),
                     series = (listOfNotNull(fullMatch.collection?.name) + (fullMatch.collections?.mapNotNull { it.name } ?: emptyList())).distinct(),
                     gameModes = mapIgdbGameModes(fullMatch.gameModes),
-                    storeUrls = extractStoreUrls(fullMatch, mapOf("BATTLE_NET" to storeId))
+                    storeUrls = extractStoreUrls(fullMatch, mapOf("BATTLE_NET" to storeId)),
+                    parentIgdbId = fullMatch.parentGame,
+                    category = fullMatch.category
                 )
                 gameDao.insertGame(game)
                 println("Battle.net Sync: Imported ${fullMatch.name}")
@@ -286,7 +289,9 @@ class GameRepository(
                     franchises = fullMatch.franchises?.map { it.name } ?: emptyList(),
                     series = (listOfNotNull(fullMatch.collection?.name) + (fullMatch.collections?.mapNotNull { it.name } ?: emptyList())).distinct(),
                     gameModes = mapIgdbGameModes(fullMatch.gameModes),
-                    storeUrls = extractStoreUrls(fullMatch, mapOf("EPIC" to record.catalogItemId))
+                    storeUrls = extractStoreUrls(fullMatch, mapOf("EPIC" to record.catalogItemId)),
+                    parentIgdbId = fullMatch.parentGame,
+                    category = fullMatch.category
                 )
                 gameDao.insertGame(game)
                 println("Epic Sync: Imported ${fullMatch.name}")
@@ -397,7 +402,9 @@ class GameRepository(
                     franchises = fullMatch.franchises?.map { it.name } ?: emptyList(),
                     series = (listOfNotNull(fullMatch.collection?.name) + (fullMatch.collections?.mapNotNull { it.name } ?: emptyList())).distinct(),
                     gameModes = mapIgdbGameModes(fullMatch.gameModes),
-                    storeUrls = extractStoreUrls(fullMatch, mapOf("UBISOFT" to titleId))
+                    storeUrls = extractStoreUrls(fullMatch, mapOf("UBISOFT" to titleId)),
+                    parentIgdbId = fullMatch.parentGame,
+                    category = fullMatch.category
                 )
                 gameDao.insertGame(game)
                 println("Ubisoft Sync: Imported ${fullMatch.name}")
@@ -599,7 +606,9 @@ class GameRepository(
                     storeUrls = updatedStoreUrls,
                     genres = if (existingGame.isGenreManual) existingGame.genres else (igdbGame?.genres?.map { it.name } ?: existingGame.genres),
                     gameModes = if (existingGame.isGameModeManual) existingGame.gameModes else mapIgdbGameModes(igdbGame?.gameModes),
-                    coverImageUrl = if (existingGame.isCoverManual) existingGame.coverImageUrl else (getFullCoverUrl(igdbGame?.cover?.url) ?: existingGame.coverImageUrl)
+                    coverImageUrl = if (existingGame.isCoverManual) existingGame.coverImageUrl else (getFullCoverUrl(igdbGame?.cover?.url) ?: existingGame.coverImageUrl),
+                    parentIgdbId = igdbGame?.parentGame ?: existingGame.parentIgdbId,
+                    category = igdbGame?.category ?: existingGame.category
                 ))
             } else {
                 // New game (Requires metadata we fetched)
@@ -628,7 +637,9 @@ class GameRepository(
                     gameModes = mapIgdbGameModes(igdbGame.gameModes),
                     storeUrls = extractStoreUrls(igdbGame, mapOf("STEAM" to primaryAppId)).toMutableMap().apply {
                         if (!containsKey("Steam")) put("Steam", "https://store.steampowered.com/app/$primaryAppId")
-                    }
+                    },
+                    parentIgdbId = igdbGame.parentGame,
+                    category = igdbGame.category
                 )
                 gameDao.insertGame(game)
                 println("Steam Sync: Imported ${igdbGame.name}")
@@ -795,7 +806,9 @@ class GameRepository(
                     storeUrls = updatedStoreUrls,
                     genres = if (existingGame.isGenreManual) existingGame.genres else (igdbGame?.genres?.map { it.name } ?: existingGame.genres),
                     gameModes = if (existingGame.isGameModeManual) existingGame.gameModes else mapIgdbGameModes(igdbGame?.gameModes),
-                    coverImageUrl = if (existingGame.isCoverManual) existingGame.coverImageUrl else (getFullCoverUrl(igdbGame?.cover?.url) ?: existingGame.coverImageUrl)
+                    coverImageUrl = if (existingGame.isCoverManual) existingGame.coverImageUrl else (getFullCoverUrl(igdbGame?.cover?.url) ?: existingGame.coverImageUrl),
+                    parentIgdbId = igdbGame?.parentGame ?: existingGame.parentIgdbId,
+                    category = igdbGame?.category ?: existingGame.category
                 ))
             } else {
                 val igdbGame = igdbGamesMetadata[igdbId] ?: return@forEachIndexed
@@ -821,7 +834,9 @@ class GameRepository(
                     franchises = igdbGame.franchises?.map { it.name } ?: emptyList(),
                     series = (listOfNotNull(igdbGame.collection?.name) + (igdbGame.collections?.mapNotNull { it.name } ?: emptyList())).distinct(),
                     gameModes = mapIgdbGameModes(igdbGame.gameModes),
-                    storeUrls = extractStoreUrls(igdbGame, mapOf("GOG" to primaryGogId))
+                    storeUrls = extractStoreUrls(igdbGame, mapOf("GOG" to primaryGogId)),
+                    parentIgdbId = igdbGame.parentGame,
+                    category = igdbGame.category
                 )
                 gameDao.insertGame(game)
                 println("Gog Sync: Imported ${igdbGame.name}")
@@ -922,7 +937,9 @@ class GameRepository(
                     storeUrls = updatedStoreUrls,
                     genres = if (existingGame.isGenreManual) existingGame.genres else (igdbGame?.genres?.map { it.name } ?: existingGame.genres),
                     gameModes = if (existingGame.isGameModeManual) existingGame.gameModes else mapIgdbGameModes(igdbGame?.gameModes),
-                    coverImageUrl = if (existingGame.isCoverManual) existingGame.coverImageUrl else (getFullCoverUrl(igdbGame?.cover?.url) ?: existingGame.coverImageUrl)
+                    coverImageUrl = if (existingGame.isCoverManual) existingGame.coverImageUrl else (getFullCoverUrl(igdbGame?.cover?.url) ?: existingGame.coverImageUrl),
+                    parentIgdbId = igdbGame?.parentGame ?: existingGame.parentIgdbId,
+                    category = igdbGame?.category ?: existingGame.category
                 ))
                 
                 if (isAlreadyPresent) {
@@ -955,7 +972,9 @@ class GameRepository(
                     franchises = igdbGame.franchises?.map { it.name } ?: emptyList(),
                     series = (listOfNotNull(igdbGame.collection?.name) + (igdbGame.collections?.mapNotNull { it.name } ?: emptyList())).distinct(),
                     gameModes = mapIgdbGameModes(igdbGame.gameModes),
-                    storeUrls = extractStoreUrls(igdbGame, emptyMap())
+                    storeUrls = extractStoreUrls(igdbGame, emptyMap()),
+                    parentIgdbId = igdbGame.parentGame,
+                    category = igdbGame.category
                 )
                 gameDao.insertGame(game)
                 println("Playnite Sync: Imported ${igdbGame.name}")
@@ -1008,7 +1027,9 @@ class GameRepository(
                 storeUrls = updatedStoreUrls,
                 genres = if (existingGame.isGenreManual) existingGame.genres else (igdbGame.genres?.map { it.name } ?: existingGame.genres),
                 gameModes = if (existingGame.isGameModeManual) existingGame.gameModes else mapIgdbGameModes(igdbGame.gameModes),
-                coverImageUrl = if (existingGame.isCoverManual) existingGame.coverImageUrl else (getFullCoverUrl(igdbGame.cover?.url) ?: existingGame.coverImageUrl)
+                coverImageUrl = if (existingGame.isCoverManual) existingGame.coverImageUrl else (getFullCoverUrl(igdbGame.cover?.url) ?: existingGame.coverImageUrl),
+                parentIgdbId = igdbGame.parentGame ?: existingGame.parentIgdbId,
+                category = igdbGame.category
             ))
         } else {
             val game = Game(
@@ -1033,7 +1054,9 @@ class GameRepository(
                 franchises = igdbGame.franchises?.map { it.name } ?: emptyList(),
                 series = (listOfNotNull(igdbGame.collection?.name) + (igdbGame.collections?.mapNotNull { it.name } ?: emptyList())).distinct(),
                 gameModes = mapIgdbGameModes(igdbGame.gameModes),
-                storeUrls = extractStoreUrls(igdbGame, mapOf(sourceKey to unmatchedGame.storeId))
+                storeUrls = extractStoreUrls(igdbGame, mapOf(sourceKey to unmatchedGame.storeId)),
+                parentIgdbId = igdbGame.parentGame,
+                category = igdbGame.category
             )
             gameDao.insertGame(game)
         }
@@ -1049,8 +1072,8 @@ class GameRepository(
                 .firstOrNull() ?: this.firstOrNull()
         }
 
-        // Stage 1: Exact Match (Raw)
         val stage1 = igdbClient.searchGames(clientId, rawTitle)
+
         stage1.find { it.name.equals(rawTitle, ignoreCase = true) && it.category in gameCategories }?.let { return it }
         stage1.find { it.name.equals(rawTitle, ignoreCase = true) }?.let { return it }
 
@@ -1138,6 +1161,11 @@ class GameRepository(
         val fullIgdbGames = igdbClient.getGamesByIds(clientId, listOf(newIgdbGame.id))
         val igdbGame = fullIgdbGames.firstOrNull() ?: newIgdbGame
         
+        var parentId = igdbGame.parentGame
+        if (parentId == null && igdbGame.category == 3) {
+            parentId = igdbClient.getParentForBundle(clientId, igdbGame.id)?.id
+        }
+
         val updatedGame = existingGame.copy(
             title = igdbGame.name,
             coverImageUrl = if (existingGame.isCoverManual) existingGame.coverImageUrl else getFullCoverUrl(igdbGame.cover?.url),
@@ -1156,7 +1184,9 @@ class GameRepository(
             franchises = igdbGame.franchises?.map { it.name } ?: emptyList(),
             series = (listOfNotNull(igdbGame.collection?.name) + (igdbGame.collections?.mapNotNull { it.name } ?: emptyList())).distinct(),
             gameModes = if (existingGame.isGameModeManual) existingGame.gameModes else mapIgdbGameModes(igdbGame.gameModes),
-            storeUrls = extractStoreUrls(igdbGame, existingGame.sourceIds)
+            storeUrls = extractStoreUrls(igdbGame, existingGame.sourceIds),
+            parentIgdbId = parentId,
+            category = igdbGame.category
             // Keep: id, platforms, isOwned, sourceIds, playtimes, playtimeMinutes, labels, completionStatus
         )
         
@@ -1218,6 +1248,10 @@ class GameRepository(
 
     suspend fun getGameByIgdbId(igdbId: Long): Game? {
         return gameDao.getGameByIgdbId(igdbId)
+    }
+
+    fun getGameByIgdbIdFlow(igdbId: Long): Flow<Game?> {
+        return gameDao.getGameByIgdbIdFlow(igdbId)
     }
 
     fun getFullCoverUrl(thumbUrl: String?): String? {
@@ -1393,6 +1427,14 @@ class GameRepository(
         return wishlistGameDao.getWishlistGameByIgdbId(igdbId)
     }
 
+    fun getDlcForGame(parentIgdbId: Long): Flow<List<Game>> {
+        return gameDao.getDlcForGame(parentIgdbId)
+    }
+
+    fun getWishlistDlcForGame(parentIgdbId: Long): Flow<List<WishlistGame>> {
+        return wishlistGameDao.getWishlistDlcForGame(parentIgdbId)
+    }
+
     /**
      * Creates a wishlist entry from an IGDB search result.
      * Collects all available store links (Steam, GOG, Epic) and fetches their current EUR prices.
@@ -1402,6 +1444,8 @@ class GameRepository(
             title = igdbGame.name,
             coverImageUrl = igdbGame.cover?.url?.let { getFullCoverUrl(it) },
             igdbId = igdbGame.id,
+            parentIgdbId = igdbGame.parentGame,
+            category = igdbGame.category,
             platformPrices = buildPlatformPrices(igdbGame)
         )
     }
@@ -1567,13 +1611,16 @@ class GameRepository(
         val igdbId = existing.igdbId ?: return@withContext
 
         // Refresh if missing summary OR screenshots OR companies OR store links OR game modes OR franchises OR series
+        // OR if it's a DLC/Bundle and we don't have a parent link yet.
         val needsRefresh = existing.summary.isNullOrBlank() || 
                            existing.screenshotUrls.isEmpty() || 
                            existing.developers.isEmpty() ||
                            existing.storeUrls.isEmpty() ||
                            existing.gameModes.isEmpty() ||
                            existing.franchises.isEmpty() ||
-                           existing.series.isEmpty()
+                           existing.series.isEmpty() ||
+                           existing.category == null ||
+                           (existing.category in 1..3 && existing.parentIgdbId == null)
 
         if (!needsRefresh) return@withContext
 
@@ -1590,8 +1637,15 @@ class GameRepository(
 
         val igdbGames = igdbClient.getGamesByIds(clientId, listOf(igdbId))
         val igdbGame = igdbGames.firstOrNull() ?: run {
-            println("Enrichment Failed: No game found on IGDB for ID $igdbId")
+            Log.d("GameRepository", "Enrichment Failed: No game found on IGDB for ID $igdbId")
             return@withContext
+        }
+
+        // Handle bundles that don't have a parent_game link but are linked from a main game via 'bundles' list.
+        var parentId = igdbGame.parentGame
+        if (parentId == null && igdbGame.category == 3) { // 3 = Bundle
+            parentId = igdbClient.getParentForBundle(clientId, igdbId)?.id
+            if (parentId != null) println("Enrichment: Found parent $parentId for bundle $igdbId")
         }
 
         // Fetch the absolute latest version of the game from DB right before updating
@@ -1612,10 +1666,28 @@ class GameRepository(
             series = (listOfNotNull(igdbGame.collection?.name) + (igdbGame.collections?.mapNotNull { it.name } ?: emptyList())).distinct(),
             gameModes = if (latestExisting.isGameModeManual) latestExisting.gameModes else mapIgdbGameModes(igdbGame.gameModes),
             genres = if (latestExisting.isGenreManual) latestExisting.genres else (igdbGame.genres?.map { it.name } ?: latestExisting.genres),
-            storeUrls = extractStoreUrls(igdbGame, latestExisting.sourceIds)
+            storeUrls = extractStoreUrls(igdbGame, latestExisting.sourceIds),
+            parentIgdbId = parentId,
+            category = igdbGame.category
         )
         
         gameDao.updateGame(updatedGame)
+
+        // Reverse enrichment: update any existing games in the library that are listed as DLCs/Bundles of THIS game.
+        val childIds = (igdbGame.dlcs ?: emptyList()) + 
+                       (igdbGame.expansions ?: emptyList()) + 
+                       (igdbGame.bundles ?: emptyList()) + 
+                       (igdbGame.standaloneExpansions ?: emptyList())
+        
+        if (childIds.isNotEmpty()) {
+            val localGames = gameDao.getAllGames().first()
+            localGames.filter { it.igdbId != null && childIds.contains(it.igdbId) && it.parentIgdbId == null }
+                .forEach { child ->
+                    gameDao.updateGame(child.copy(parentIgdbId = igdbId))
+                    println("Enrichment: Linked child ${child.title} to parent ${latestExisting.title}")
+                }
+        }
+
         println("Enrichment Complete for: ${existing.title}")
     }
 

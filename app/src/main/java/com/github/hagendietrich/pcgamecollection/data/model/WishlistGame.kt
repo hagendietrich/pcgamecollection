@@ -34,6 +34,8 @@ data class WishlistGame(
     val title: String,
     val coverImageUrl: String? = null,
     val igdbId: Long? = null,
+    val parentIgdbId: Long? = null,
+    val category: Int? = null,
     val platformPrices: List<PlatformPrice> = emptyList(),
     val dateAdded: Long = System.currentTimeMillis(),
     val notes: String? = null

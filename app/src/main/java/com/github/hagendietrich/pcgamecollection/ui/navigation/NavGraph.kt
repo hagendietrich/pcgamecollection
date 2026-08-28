@@ -158,7 +158,10 @@ fun AppNavGraph(
             )
             GameDetailScreen(
                 viewModel = viewModel,
-                onBack = { navController.popBackStack() }
+                onBack = { navController.popBackStack() },
+                onNavigateToGame = { targetGameId ->
+                    navController.navigate(Screen.GameDetails.createRoute(targetGameId))
+                }
             )
         }
         composable(Screen.Setup.route) {

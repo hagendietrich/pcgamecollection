@@ -38,4 +38,10 @@ interface GameDao {
 
     @Query("SELECT * FROM games WHERE igdbId = :igdbId LIMIT 1")
     suspend fun getGameByIgdbId(igdbId: Long): Game?
+
+    @Query("SELECT * FROM games WHERE igdbId = :igdbId LIMIT 1")
+    fun getGameByIgdbIdFlow(igdbId: Long): Flow<Game?>
+
+    @Query("SELECT * FROM games WHERE parentIgdbId = :parentIgdbId")
+    fun getDlcForGame(parentIgdbId: Long): Flow<List<Game>>
 }

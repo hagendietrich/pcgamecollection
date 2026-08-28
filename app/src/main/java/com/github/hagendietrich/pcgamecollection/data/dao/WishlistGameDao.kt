@@ -31,4 +31,7 @@ interface WishlistGameDao {
 
     @Query("SELECT * FROM wishlist_games WHERE igdbId = :igdbId LIMIT 1")
     suspend fun getWishlistGameByIgdbId(igdbId: Long): WishlistGame?
+
+    @Query("SELECT * FROM wishlist_games WHERE parentIgdbId = :parentIgdbId")
+    fun getWishlistDlcForGame(parentIgdbId: Long): Flow<List<WishlistGame>>
 }

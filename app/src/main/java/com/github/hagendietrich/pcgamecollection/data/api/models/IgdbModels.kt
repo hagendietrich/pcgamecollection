@@ -14,7 +14,7 @@ data class IgdbTokenResponse(
 data class IgdbGame(
     val id: Long,
     val name: String,
-    val category: Int = 0,
+    @SerialName("game_type") val category: Int? = null,
     @SerialName("first_release_date") val firstReleaseDate: Long? = null,
     val cover: IgdbCover? = null,
     val genres: List<IgdbGenre>? = null,
@@ -30,7 +30,12 @@ data class IgdbGame(
     @SerialName("game_modes") val gameModes: List<IgdbGameMode>? = null,
     val franchises: List<IgdbFranchise>? = null,
     val collection: IgdbCollection? = null,
-    val collections: List<IgdbCollection>? = null
+    val collections: List<IgdbCollection>? = null,
+    @SerialName("parent_game") val parentGame: Long? = null,
+    val dlcs: List<Long>? = null,
+    val expansions: List<Long>? = null,
+    val bundles: List<Long>? = null,
+    @SerialName("standalone_expansions") val standaloneExpansions: List<Long>? = null
 )
 
 @Serializable

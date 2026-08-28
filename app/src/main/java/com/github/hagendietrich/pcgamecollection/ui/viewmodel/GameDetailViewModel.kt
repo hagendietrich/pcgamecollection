@@ -54,12 +54,33 @@ class GameDetailViewModel(
         loadGame()
     }
 
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     private fun loadGame() {
         viewModelScope.launch {
-            gameRepository.getGameByIdFlow(gameId).collect { game ->
-                if (game != null) {
-                    _uiState.value = GameDetailUiState.Success(game)
+            gameRepository.getGameByIdFlow(gameId).flatMapLatest { game ->
+                if (game == null) {
+                    flowOf(GameDetailUiState.Error("Game not found."))
+                } else {
+                    val igdbId = game.igdbId
+                    val parentIgdbId = game.parentIgdbId
                     
+                    val dlcsFlow = if (igdbId != null) gameRepository.getDlcForGame(igdbId) else flowOf(emptyList())
+                    val wishlistDlcsFlow = if (igdbId != null) gameRepository.getWishlistDlcForGame(igdbId) else flowOf(emptyList())
+                    val parentGameFlow = if (parentIgdbId != null) gameRepository.getGameByIgdbIdFlow(parentIgdbId) else flowOf(null)
+
+                    combine(
+                        dlcsFlow,
+                        wishlistDlcsFlow,
+                        parentGameFlow
+                    ) { dlcs, wishlistDlcs, parentGame ->
+                        GameDetailUiState.Success(game, dlcs, wishlistDlcs, parentGame)
+                    }
+                }
+            }.collect { state ->
+                _uiState.value = state
+                
+                if (state is GameDetailUiState.Success) {
+                    val game = state.game
                     // Trigger automatic enrichment ONLY ONCE per screen session
                     if (!enrichmentAttempted) {
                         enrichmentAttempted = true
@@ -70,14 +91,14 @@ class GameDetailViewModel(
                                               game.storeUrls.isEmpty() ||
                                               game.gameModes.isEmpty() ||
                                               game.franchises.isEmpty() ||
-                                              game.series.isEmpty()
+                                              game.series.isEmpty() ||
+                                              game.category == null ||
+                                              (game.category == 0 && game.summary.isNullOrBlank()) // Ensure we fetch for newly added games
                         
                         if (needsEnrichment) {
                             enrichGame()
                         }
                     }
-                } else {
-                    _uiState.value = GameDetailUiState.Error("Game not found.")
                 }
             }
         }
@@ -310,6 +331,11 @@ class GameDetailViewModel(
 
 sealed class GameDetailUiState {
     object Loading : GameDetailUiState()
-    data class Success(val game: Game) : GameDetailUiState()
+    data class Success(
+        val game: Game,
+        val dlcs: List<Game> = emptyList(),
+        val wishlistDlcs: List<com.github.hagendietrich.pcgamecollection.data.model.WishlistGame> = emptyList(),
+        val parentGame: Game? = null
+    ) : GameDetailUiState()
     data class Error(val message: String) : GameDetailUiState()
 }

@@ -10,7 +10,7 @@ import com.github.hagendietrich.pcgamecollection.data.model.Game
 import com.github.hagendietrich.pcgamecollection.data.model.IgnoredGame
 import com.github.hagendietrich.pcgamecollection.data.model.WishlistGame
 
-@Database(entities = [Game::class, IgnoredGame::class, WishlistGame::class], version = 19, exportSchema = true)
+@Database(entities = [Game::class, IgnoredGame::class, WishlistGame::class], version = 22, exportSchema = true)
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun gameDao(): GameDao

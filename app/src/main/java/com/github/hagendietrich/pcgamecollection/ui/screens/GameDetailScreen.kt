@@ -42,6 +42,7 @@ import com.github.hagendietrich.pcgamecollection.data.model.CompletionStatus
 import com.github.hagendietrich.pcgamecollection.data.model.Game
 import com.github.hagendietrich.pcgamecollection.ui.components.*
 import com.github.hagendietrich.pcgamecollection.ui.viewmodel.GameDetailUiState
+import com.github.hagendietrich.pcgamecollection.data.model.getCategoryDisplay
 import com.github.hagendietrich.pcgamecollection.ui.viewmodel.GameDetailViewModel
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -53,6 +54,7 @@ import kotlin.math.roundToInt
 fun GameDetailScreen(
     viewModel: GameDetailViewModel,
     onBack: () -> Unit,
+    onNavigateToGame: (Int) -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
@@ -236,9 +238,60 @@ fun GameDetailScreen(
                         InfoRow(label = "Developed by", value = game.developers.joinToString(", "))
                     }
                     
-                    // 9. Published by
-                    if (game.publishers.isNotEmpty()) {
-                        InfoRow(label = "Published by", value = game.publishers.joinToString(", "))
+                     // 9. Published by
+                     if (game.publishers.isNotEmpty()) {
+                         InfoRow(label = "Published by", value = game.publishers.joinToString(", "))
+                     }
+ 
+                     // 10. Type
+                     InfoRow(label = "Type", value = game.getCategoryDisplay(), isClickable = false)
+
+                    
+                    // DLCs / Main Game Link
+                    if (state.parentGame != null) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Main Game: ",
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.Bold
+                            )
+                            DetailChip(
+                                text = state.parentGame.title,
+                                onClick = { onNavigateToGame(state.parentGame.id) }
+                            )
+                        }
+                    } else if (game.parentIgdbId != null) {
+                        // Game has a parent but it's not in the library
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Main Game: ",
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "Not in Library",
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                            )
+                        }
+                    }
+
+                    if (state.dlcs.isNotEmpty() || state.wishlistDlcs.isNotEmpty()) {
+                        DlcRow(
+                            ownedDlcs = state.dlcs,
+                            wishlistDlcs = state.wishlistDlcs,
+                            onNavigateToGame = onNavigateToGame
+                        )
                     }
                     
                     Spacer(modifier = Modifier.height(8.dp))
@@ -808,6 +861,100 @@ fun LinksDetailRow(
                             }
                         }
                     )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun DlcRow(
+    ownedDlcs: List<Game>,
+    wishlistDlcs: List<com.github.hagendietrich.pcgamecollection.data.model.WishlistGame>,
+    onNavigateToGame: (Int) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { expanded = !expanded }
+            .padding(vertical = 4.dp)
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(
+                text = "DLCs: ",
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Bold
+            )
+            
+            Text(
+                text = "${ownedDlcs.size + wishlistDlcs.size} items",
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.primary
+            )
+            
+            Spacer(modifier = Modifier.weight(1f))
+            
+            Icon(
+                imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                contentDescription = if (expanded) "Collapse" else "Expand"
+            )
+        }
+        
+        if (expanded) {
+            Column(
+                modifier = Modifier.padding(top = 8.dp, start = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                ownedDlcs.forEach { dlc ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onNavigateToGame(dlc.id) }
+                            .padding(vertical = 2.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.CheckCircle,
+                            contentDescription = "Owned",
+                            tint = Color(0xFF4CAF50),
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = dlc.title,
+                            style = MaterialTheme.typography.bodyMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+                
+                wishlistDlcs.forEach { dlc ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 2.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Favorite,
+                            contentDescription = "Wishlist",
+                            tint = MaterialTheme.colorScheme.secondary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = dlc.title,
+                            style = MaterialTheme.typography.bodyMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
             }
         }
