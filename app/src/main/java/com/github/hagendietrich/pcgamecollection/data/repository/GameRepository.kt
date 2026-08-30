@@ -675,6 +675,7 @@ class GameRepository(
         val userId = gogClient.resolveUserId(username)
         if (userId != null) {
             settingsRepository.saveGogUserId(userId)
+            settingsRepository.saveLastGogUsername(username)
         }
         
         val gogGames = gogClient.fetchPublicGames(username)
@@ -1670,7 +1671,10 @@ class GameRepository(
             when (ext.category) {
                 IgdbExternalCategory.STEAM -> {
                     val id = uid ?: url?.let { Regex("/app/(\\d+)").find(it)?.groupValues?.get(1) }
-                    if (!id.isNullOrBlank()) scavengedSourceIds["STEAM"] = id
+                    if (!id.isNullOrBlank()) {
+                        scavengedSourceIds["STEAM"] = id
+                        Log.d("GameRepository", "Enrichment [Scavenge]: Found Steam AppID $id")
+                    }
                 }
                 IgdbExternalCategory.GOG -> {
                     val id = uid ?: url?.let { it.trimEnd('/').substringAfterLast("/") }
@@ -1713,7 +1717,11 @@ class GameRepository(
             gameModes = if (latestExisting.isGameModeManual) latestExisting.gameModes else mapIgdbGameModes(igdbGame.gameModes),
             genres = if (latestExisting.isGenreManual) latestExisting.genres else (igdbGame.genres?.map { it.name } ?: latestExisting.genres),
             sourceIds = latestExisting.sourceIds.toMutableMap().apply { putAll(scavengedSourceIds.filter { it.value.isNotBlank() }) },
-            storeUrls = extractStoreUrls(igdbGame, latestExisting.sourceIds.toMutableMap().apply { putAll(scavengedSourceIds.filter { it.value.isNotBlank() }) }),
+            storeUrls = extractStoreUrls(
+                igdbGame = igdbGame, 
+                sourceIds = latestExisting.sourceIds.toMutableMap().apply { putAll(scavengedSourceIds.filter { it.value.isNotBlank() }) },
+                externals = externals
+            ),
             parentIgdbId = parentId,
             category = igdbGame.category
         )
@@ -1826,7 +1834,8 @@ class GameRepository(
             fetchAchievementsForGame(gameId)
         }
 
-        println("Enrichment Complete for: ${existing.title}")
+        val finalGame = gameDao.getGameById(gameId)
+        println("Enrichment Complete for: ${existing.title}. SourceIDs now: ${finalGame?.sourceIds}")
     }
 
     fun mapIgdbGameModes(igdbModes: List<IgdbGameMode>?): List<String> {
@@ -1881,34 +1890,57 @@ class GameRepository(
     /**
      * Extracts store URLs from IGDB metadata.
      */
-    fun extractStoreUrls(igdbGame: IgdbGame, sourceIds: Map<String, String>): Map<String, String> {
+    fun extractStoreUrls(
+        igdbGame: IgdbGame, 
+        sourceIds: Map<String, String>,
+        externals: List<IgdbExternalGameData>? = null
+    ): Map<String, String> {
         val urls = mutableMapOf<String, String>()
         
-        // Steam (Category 1)
-        val steamId = sourceIds["STEAM"] ?: igdbGame.externalGames?.find { it.category == IgdbExternalCategory.STEAM }?.uid
+        // Combine externals from both sources
+        val allExternals = mutableListOf<IgdbExternalGameData>()
+        externals?.let { allExternals.addAll(it) }
+        igdbGame.externalGames?.let { allExternals.addAll(it) }
+        
+        // Deduplicate by URL
+        val uniqueExternals = allExternals.distinctBy { it.url ?: it.id }
+        
+        Log.d("GameRepository", "Extracting Store URLs for '${igdbGame.name}'. Found ${uniqueExternals.size} unique externals.")
+
+        fun findExternal(category: Int, urlPattern: String? = null): IgdbExternalGameData? {
+            return uniqueExternals.find { it.category == category }
+                ?: if (urlPattern != null) uniqueExternals.find { it.url?.contains(urlPattern, ignoreCase = true) == true } else null
+        }
+
+        // 1. Steam (Category 1)
+        val steamExt = findExternal(IgdbExternalCategory.STEAM, "steampowered.com")
+        val steamId = sourceIds["STEAM"] ?: steamExt?.uid ?: steamExt?.url?.let { Regex("/app/(\\d+)").find(it)?.groupValues?.get(1) }
         if (steamId != null) {
             urls["Steam"] = "https://store.steampowered.com/app/$steamId"
         }
 
-        // GOG (Category 5)
-        // If we have a URL from IGDB, use it.
-        val gogUrl = igdbGame.externalGames?.find { it.category == IgdbExternalCategory.GOG }?.url
+        // 2. GOG (Category 5)
+        val gogExt = findExternal(IgdbExternalCategory.GOG, "gog.com")
+        val gogUrl = gogExt?.url ?: if (sourceIds.containsKey("GOG")) "https://www.gog.com/en/game/${sourceIds["GOG"]}" else null
         if (gogUrl != null) {
-            urls["GOG"] = gogUrl
+            urls["GOG"] = if (gogUrl.startsWith("http")) gogUrl else "https://$gogUrl"
         }
 
-        // Epic Games (Category 26)
-        val epicUrl = igdbGame.externalGames?.find { it.category == IgdbExternalCategory.EPIC_GAMES }?.url
+        // 3. Epic Games (Category 26)
+        val epicExt = findExternal(IgdbExternalCategory.EPIC_GAMES, "epicgames.com")
+        val epicUrl = epicExt?.url ?: if (sourceIds.containsKey("EPIC")) "https://store.epicgames.com/p/${sourceIds["EPIC"]}" else null
         if (epicUrl != null) {
-            urls["Epic"] = epicUrl
+            urls["Epic"] = if (epicUrl.startsWith("http")) epicUrl else "https://$epicUrl"
         }
 
-        // Ubisoft Connect (Category 34)
-        val ubiUrl = igdbGame.externalGames?.find { it.category == IgdbExternalCategory.UBISOFT_CONNECT }?.url
+        // 4. Ubisoft Connect (Category 34)
+        val ubiExt = findExternal(IgdbExternalCategory.UBISOFT_CONNECT, "ubisoft.com")
+        val ubiUrl = ubiExt?.url ?: if (sourceIds.containsKey("UBISOFT")) "https://store.ubisoft.com/game?dwvar_prod_titleId=${sourceIds["UBISOFT"]}" else null
         if (ubiUrl != null) {
-            urls["Ubisoft"] = ubiUrl
+            urls["Ubisoft"] = if (ubiUrl.startsWith("http")) ubiUrl else "https://$ubiUrl"
         }
 
+        Log.d("GameRepository", "Extracted URLs for '${igdbGame.name}': $urls")
         return urls
     }
 
@@ -2001,7 +2033,7 @@ class GameRepository(
         // 2. GOG (Fallback 1)
         val gogId = game.sourceIds["GOG"]
         if (gogId != null) {
-            Log.d("GameRepository", "Achievement Fetch [GOG]: Found GOG ID $gogId")
+            Log.d("GameRepository", "Achievement Fetch [GOG]: Found GOG ID $gogId, SourceIDs: ${game.sourceIds}")
             var userId = settingsRepository.gogUserId.firstOrNull()
             val username = settingsRepository.lastGogUsername.firstOrNull()
             
@@ -2016,27 +2048,131 @@ class GameRepository(
 
             if (!userId.isNullOrBlank()) {
                 try {
-                    val schema = gogClient.fetchAchievementSchema(gogId)
-                    val progress = gogClient.fetchUserAchievements(gogId, userId, username)
+                    val rawGogProgress = gogClient.fetchUserAchievements(gogId, userId, username)
                     
-                    if (schema.isNotEmpty()) {
-                        val achievements = schema.map { def ->
-                            val userAch = progress.find { it.achievement_key == def.bestKey }
-                                ?: progress.find { it.achievement_key.equals(def.name, ignoreCase = true) }
-                            Achievement(
-                                name = def.name,
-                                description = def.description,
-                                iconUrl = def.unlocked_icon_url,
-                                isUnlocked = userAch?.unlocked == true,
-                                unlockTime = null,
-                                isHidden = !def.visible_before_unlocking
-                            )
+                    // CRITICAL: Sort GOG achievements by key (Long) ascending.
+                    // This aligns the base-game achievements at the start, matching Steam's schema order.
+                    val gogProgress = rawGogProgress.sortedBy { it.achievement_key.toLongOrNull() ?: 0L }
+
+                    // HYBRID APPROACH: If we have a Steam AppID, try to get high-quality metadata from Steam
+                    var scavengedSteamAppId = game.sourceIds["STEAM"]?.toIntOrNull()
+                    
+                    Log.d("GameRepository", "Achievement Fetch [GOG]: Progress fetched (${gogProgress.size}). Checking Hybrid sync. SourceIds: ${game.sourceIds}, Extracted AppID: $scavengedSteamAppId")
+
+                    // FALLBACK Scavenge: Try to extract AppID from storeUrls if STEAM key is missing
+                    if (scavengedSteamAppId == null) {
+                        game.storeUrls["Steam"]?.let { url ->
+                            scavengedSteamAppId = Regex("/app/(\\d+)").find(url)?.groupValues?.get(1)?.toIntOrNull()
+                            if (scavengedSteamAppId != null) {
+                                Log.d("GameRepository", "Achievement Fetch [Hybrid]: Extracted Steam AppID $scavengedSteamAppId from storeUrl")
+                            }
                         }
+                    }
+                    
+                    val steamApiKey = settingsRepository.steamApiKey.firstOrNull()
+                    
+                    var finalAchievements: List<Achievement> = emptyList()
+                    var usedSource = "GOG"
+                    
+                    if (!steamApiKey.isNullOrBlank() && scavengedSteamAppId != null) {
+                        Log.d("GameRepository", "Achievement Fetch [Hybrid]: Starting for Steam AppID $scavengedSteamAppId")
+                        val steamSchema = steamClient.fetchAchievementSchema(steamApiKey, scavengedSteamAppId)
+                        Log.d("GameRepository", "Achievement Fetch [Hybrid]: Steam Schema size: ${steamSchema.size}, GOG progress size: ${gogProgress.size}")
+                        
+                        if (steamSchema.isNotEmpty()) {
+                            // Mapping strategy: 
+                            // 1. Try to find a match where Steam API Name exists in GOG keys (rare)
+                            // 2. Try to match by Display Name (if GOG revealed it)
+                            // 3. Match by native list order (most reliable for parity)
+                            
+                            val gogMap = gogProgress.associateBy { it.achievement_key }
+                            val gogByName = gogProgress.filter { 
+                                val name = it.metadata?.name
+                                !name.isNullOrBlank() && !name.equals("Secret achievement", ignoreCase = true) 
+                            }.associateBy { it.metadata?.name?.lowercase()?.trim() }
+
+                            finalAchievements = steamSchema.mapIndexed { index, steamDef ->
+                                val steamName = steamDef.displayName?.lowercase()?.trim()
+                                
+                                val userAch = gogMap[steamDef.name] 
+                                    ?: gogByName[steamName]
+                                    ?: gogProgress.getOrNull(index)
+                                
+                                val isUnlocked = userAch?.unlocked == true
+                                if (isUnlocked) {
+                                    Log.d("GameRepository", "Achievement Fetch [Hybrid]: Unlocked match for '${steamDef.displayName}' (Index: $index)")
+                                }
+
+                                val gogDesc = userAch?.metadata?.description
+                                val finalDesc = if (isUnlocked || steamDef.hidden == 0) {
+                                    steamDef.description 
+                                        ?: if (!gogDesc.isNullOrBlank() && !gogDesc.contains("Continue playing", ignoreCase = true)) gogDesc else null
+                                } else {
+                                    "Continue playing to unlock this achievement."
+                                }
+
+                                Achievement(
+                                    name = if (isUnlocked || steamDef.hidden == 0) (steamDef.displayName ?: steamDef.name) else "Secret Achievement",
+                                    description = finalDesc,
+                                    iconUrl = steamDef.icon, 
+                                    isUnlocked = isUnlocked,
+                                    unlockTime = null,
+                                    isHidden = steamDef.hidden == 1
+                                )
+                            }
+                            usedSource = "GOG (Steam Metadata)"
+                            Log.i("GameRepository", "Achievement Fetch [Hybrid]: Finished. Imported ${finalAchievements.size} achievements.")
+                        }
+                    } else {
+                        Log.d("GameRepository", "Achievement Fetch [Hybrid]: Skipped. Key Present: ${!steamApiKey.isNullOrBlank()}, Steam ID: $scavengedSteamAppId")
+                    }
+                    
+                    // FALLBACK: If Hybrid failed or no Steam AppID, use GOG metadata
+                    if (finalAchievements.isEmpty()) {
+                        val gogSchema = gogClient.fetchAchievementSchema(gogId)
+                        
+                        finalAchievements = if (gogSchema.isNotEmpty()) {
+                            gogSchema.map { def ->
+                                val userAch = gogProgress.find { it.achievement_key == def.bestKey }
+                                    ?: gogProgress.find { it.achievement_key.equals(def.name, ignoreCase = true) }
+                                
+                                val meta = userAch?.metadata
+                                val rawIcon = meta?.unlocked_icon_url ?: def.unlocked_icon_url
+                                val iconUrl = if (rawIcon?.startsWith("//") == true) "https:$rawIcon" else rawIcon
+
+                                Achievement(
+                                    name = meta?.name ?: def.name,
+                                    description = meta?.description ?: def.description,
+                                    iconUrl = iconUrl,
+                                    isUnlocked = userAch?.unlocked == true,
+                                    unlockTime = null, 
+                                    isHidden = !(meta?.visible_before_unlocking ?: def.visible_before_unlocking)
+                                )
+                            }
+                        } else if (gogProgress.any { it.metadata != null }) {
+                            Log.d("GameRepository", "Achievement Fetch [GOG]: Using metadata from scraped results")
+                            gogProgress.mapNotNull { userAch ->
+                                val def = userAch.metadata ?: return@mapNotNull null
+                                Achievement(
+                                    name = def.name,
+                                    description = def.description,
+                                    iconUrl = def.unlocked_icon_url,
+                                    isUnlocked = userAch.unlocked,
+                                    unlockTime = null,
+                                    isHidden = !def.visible_before_unlocking
+                                )
+                            }
+                        } else {
+                            emptyList()
+                        }
+                    }
+
+                    if (finalAchievements.isNotEmpty()) {
                         gameDao.updateGame(game.copy(
-                            achievements = achievements,
-                            achievementsSource = "GOG"
+                            achievements = finalAchievements,
+                            achievementsSource = usedSource
                         ))
-                        Log.i("GameRepository", "Achievement Fetch [GOG]: Successfully saved ${achievements.size} achievements")
+                        Log.i("GameRepository", "Achievement Fetch [GOG]: Successfully saved ${finalAchievements.size} achievements from $usedSource")
                         return@withContext
                     }
                 } catch (e: Exception) {

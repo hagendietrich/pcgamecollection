@@ -61,15 +61,11 @@ class GogClient {
     )
 
     @Serializable
-    data class GogPlayerAchievementsResponse(
-        val items: List<GogPlayerAchievement> = emptyList()
-    )
-
-    @Serializable
     data class GogPlayerAchievement(
         val achievement_key: String,
         val unlocked: Boolean = false,
-        val unlock_date: String? = null
+        val unlock_date: String? = null,
+        val metadata: GogAchievementSchema? = null
     )
 
     /**
@@ -282,7 +278,13 @@ class GogClient {
                 val achs = product["achievements"]?.jsonArray
                 if (achs != null) {
                     Log.d("GogClient", "GOG schema response: found ${achs.size} achievements")
-                    return json.decodeFromString<List<GogAchievementSchema>>(achs.toString())
+                    val rawAchs = json.decodeFromString<List<GogAchievementSchema>>(achs.toString())
+                    return rawAchs.map { ach ->
+                        ach.copy(
+                            unlocked_icon_url = ensureProtocol(ach.unlocked_icon_url),
+                            locked_icon_url = ensureProtocol(ach.locked_icon_url)
+                        )
+                    }
                 }
             }
             Log.d("GogClient", "Product API did not contain achievements list, status: ${response.status}")
@@ -294,29 +296,19 @@ class GogClient {
     }
 
     suspend fun fetchUserAchievements(productId: String, userId: String, username: String? = null): List<GogPlayerAchievement> {
-        val url = "https://gameplay.gog.com/clients/$productId/users/$userId/achievements"
-        Log.d("GogClient", "Fetching user achievements for Product $productId, User $userId from $url")
-        return try {
-            val response = client.get(url)
-            if (response.status == HttpStatusCode.OK) {
-                val playerResponse: GogPlayerAchievementsResponse = response.body()
-                Log.d("GogClient", "GOG user achievements response: found ${playerResponse.items.size} entries")
-                playerResponse.items
-            } else {
-                val errorBody = response.bodyAsText()
-                Log.e("GogClient", "Error fetching GOG user achievements: Status ${response.status}, Body: $errorBody")
-                
-                // Fallback: Scrape public profile if Unauthorized or Not Found
-                if (username != null && (response.status == HttpStatusCode.Unauthorized || response.status == HttpStatusCode.Forbidden || response.status == HttpStatusCode.NotFound)) {
-                    return fetchUserAchievementsScraped(productId, username, userId)
-                }
-                emptyList()
-            }
-        } catch (e: Exception) {
-            Log.e("GogClient", "Error fetching GOG user achievements: ${e.message}")
-            // Catch-all fallback
-            if (username != null) fetchUserAchievementsScraped(productId, username, userId) else emptyList()
+        // The official gameplay API requires OAuth2 authentication and is not publicly accessible.
+        // We use the scraping fallback which works for public profiles.
+        return if (username != null) {
+            fetchUserAchievementsScraped(productId, username, userId)
+        } else {
+            Log.w("GogClient", "Cannot fetch GOG achievements: Username is missing for scraping fallback.")
+            emptyList()
         }
+    }
+
+    private fun ensureProtocol(url: String?): String? {
+        if (url.isNullOrBlank()) return null
+        return if (url.startsWith("//")) "https:$url" else url
     }
 
     /**
@@ -325,7 +317,7 @@ class GogClient {
      */
     private suspend fun fetchUserAchievementsScraped(productId: String, username: String, userId: String? = null): List<GogPlayerAchievement> {
         val url = if (userId != null) {
-            "https://www.gog.com/u/$username/game/$productId?sort_user_id=$userId&sort=user_unlock_date"
+            "https://www.gog.com/u/$username/game/$productId?sort_user_id=$userId"
         } else {
             "https://www.gog.com/u/$username/game/$productId"
         }
@@ -358,24 +350,74 @@ class GogClient {
                         ?: ach["api_key"]?.jsonPrimitive?.content
                         ?: ach["id"]?.jsonPrimitive?.content
                     
+                    val metadata = GogAchievementSchema(
+                        api_key = ach["api_key"]?.jsonPrimitive?.content,
+                        achievement_id = ach["achievement_id"]?.jsonPrimitive?.content,
+                        name = ach["name"]?.jsonPrimitive?.content ?: "Unknown Achievement",
+                        description = ach["description"]?.jsonPrimitive?.content,
+                        unlocked_icon_url = ensureProtocol(
+                            ach["unlocked_icon_url"]?.jsonPrimitive?.content
+                                ?: ach["imageUrlUnlocked"]?.jsonPrimitive?.content
+                        ),
+                        locked_icon_url = ensureProtocol(
+                            ach["locked_icon_url"]?.jsonPrimitive?.content
+                                ?: ach["imageUrlLocked"]?.jsonPrimitive?.content
+                        ),
+                        visible_before_unlocking = ach["visible_before_unlocking"]?.jsonPrimitive?.boolean
+                            ?: ach["visible"]?.jsonPrimitive?.boolean
+                            ?: true
+                    )
+                    
                     // The stats object is keyed by UserID
                     val stats = entry["stats"]?.jsonObject
                     var isUnlocked = false
+                    var unlockDate: String? = null
+                    var unlockedName: String? = null
+                    var unlockedDescription: String? = null
+                    var unlockedIcon: String? = null
                     
                     if (stats != null) {
                         // Check if ANY user in stats has unlocked it (usually only one user present)
                         for (uId in stats.keys) {
                             val userStats = stats[uId]?.jsonObject
-                            if (userStats?.get("isUnlocked")?.jsonPrimitive?.boolean == true ||
-                                userStats?.get("is_unlocked")?.jsonPrimitive?.boolean == true) {
+                            val unlocked = userStats?.get("isUnlocked")?.jsonPrimitive?.boolean == true ||
+                                           userStats?.get("is_unlocked")?.jsonPrimitive?.boolean == true
+                            
+                            if (unlocked) {
                                 isUnlocked = true
+                                unlockDate = userStats.get("unlockDate")?.jsonPrimitive?.content
+                                    ?: userStats.get("unlock_date")?.jsonPrimitive?.content
+                                
+                                // For secret achievements, the real info is in userStats
+                                unlockedName = userStats.get("unlockedName")?.jsonPrimitive?.content
+                                    ?: userStats.get("unlocked_name")?.jsonPrimitive?.content
+                                    ?: userStats.get("name")?.jsonPrimitive?.content
+                                    ?: userStats.get("title")?.jsonPrimitive?.content
+                                unlockedDescription = userStats.get("unlockedDescription")?.jsonPrimitive?.content
+                                    ?: userStats.get("unlocked_description")?.jsonPrimitive?.content
+                                    ?: userStats.get("description")?.jsonPrimitive?.content
+                                    ?: userStats.get("text")?.jsonPrimitive?.content
+                                unlockedIcon = userStats.get("unlockedIcon")?.jsonPrimitive?.content
+                                    ?: userStats.get("unlocked_icon")?.jsonPrimitive?.content
+                                    ?: userStats.get("icon")?.jsonPrimitive?.content
+                                    ?: userStats.get("achievementIcon")?.jsonPrimitive?.content
+                                    ?: userStats.get("achievement_icon")?.jsonPrimitive?.content
+                                    ?: userStats.get("image")?.jsonPrimitive?.content
                                 break
                             }
                         }
                     }
                     
+                    val finalMetadata = metadata.copy(
+                        name = unlockedName ?: metadata.name,
+                        description = unlockedDescription ?: metadata.description,
+                        unlocked_icon_url = ensureProtocol(unlockedIcon ?: metadata.unlocked_icon_url),
+                        locked_icon_url = ensureProtocol(metadata.locked_icon_url)
+                    )
+                    
                     if (key != null) {
-                        achievements.add(GogPlayerAchievement(key, isUnlocked))
+                        Log.d("GogClient", "Scraped Achievement: key=$key, unlocked=$isUnlocked, name=${finalMetadata.name}, icon=${finalMetadata.unlocked_icon_url}")
+                        achievements.add(GogPlayerAchievement(key, isUnlocked, unlockDate, finalMetadata))
                     }
                 }
             } else {
@@ -405,16 +447,65 @@ class GogClient {
                     }
 
                     val achs = findAchievements(jsonObj)
+                    Log.d("GogClient", "Scraping [__NEXT_DATA__]: Found ${achs?.size ?: 0} achievements")
+                    
                     achs?.forEach { achElement ->
                         val ach = achElement.jsonObject
                         val key = ach["achievement_id"]?.jsonPrimitive?.content 
                             ?: ach["api_key"]?.jsonPrimitive?.content
+                            ?: ach["id"]?.jsonPrimitive?.content
+                        
                         val unlocked = ach["is_unlocked"]?.jsonPrimitive?.boolean 
+                            ?: ach["isUnlocked"]?.jsonPrimitive?.boolean
                             ?: ach["unlocked"]?.jsonPrimitive?.boolean 
                             ?: false
                         
+                        // For Next.js profiles, revealed data might be in the object itself or in a stats sub-object
+                        val stats = ach["stats"]?.jsonObject
+                        val revealedName = ach["unlockedName"]?.jsonPrimitive?.content 
+                            ?: ach["unlocked_name"]?.jsonPrimitive?.content
+                            ?: stats?.get("unlockedName")?.jsonPrimitive?.content
+                            ?: stats?.get("unlocked_name")?.jsonPrimitive?.content
+                            ?: stats?.get("name")?.jsonPrimitive?.content
+                        
+                        val revealedDesc = ach["unlockedDescription"]?.jsonPrimitive?.content
+                            ?: ach["unlocked_description"]?.jsonPrimitive?.content
+                            ?: stats?.get("unlockedDescription")?.jsonPrimitive?.content
+                            ?: stats?.get("unlocked_description")?.jsonPrimitive?.content
+                            ?: stats?.get("description")?.jsonPrimitive?.content
+                        
+                        val revealedIcon = ach["unlockedIcon"]?.jsonPrimitive?.content
+                            ?: ach["unlocked_icon"]?.jsonPrimitive?.content
+                            ?: ach["achievementIcon"]?.jsonPrimitive?.content
+                            ?: ach["achievement_icon"]?.jsonPrimitive?.content
+                            ?: stats?.get("unlockedIcon")?.jsonPrimitive?.content
+                            ?: stats?.get("unlocked_icon")?.jsonPrimitive?.content
+                            ?: stats?.get("achievementIcon")?.jsonPrimitive?.content
+                            ?: stats?.get("achievement_icon")?.jsonPrimitive?.content
+                            ?: stats?.get("icon")?.jsonPrimitive?.content
+
+                        val metadata = GogAchievementSchema(
+                            api_key = ach["api_key"]?.jsonPrimitive?.content,
+                            achievement_id = ach["achievement_id"]?.jsonPrimitive?.content,
+                            name = revealedName ?: ach["name"]?.jsonPrimitive?.content ?: "Unknown Achievement",
+                            description = revealedDesc ?: ach["description"]?.jsonPrimitive?.content,
+                            unlocked_icon_url = ensureProtocol(
+                                revealedIcon 
+                                    ?: ach["unlocked_icon_url"]?.jsonPrimitive?.content
+                                    ?: ach["imageUrlUnlocked"]?.jsonPrimitive?.content
+                            ),
+                            locked_icon_url = ensureProtocol(
+                                ach["locked_icon_url"]?.jsonPrimitive?.content
+                                    ?: ach["imageUrlLocked"]?.jsonPrimitive?.content
+                            ),
+                            visible_before_unlocking = ach["visible_before_unlocking"]?.jsonPrimitive?.boolean
+                                ?: ach["visible"]?.jsonPrimitive?.boolean
+                                ?: true
+                        )
+                        
                         if (key != null) {
-                            achievements.add(GogPlayerAchievement(key, unlocked))
+                            Log.d("GogClient", "Scraped Achievement [NEXT]: key=$key, unlocked=$unlocked, name=${metadata.name}, icon=${metadata.unlocked_icon_url}")
+                            achievements.add(GogPlayerAchievement(key, unlocked, metadata = metadata))
                         }
                     }
                 }

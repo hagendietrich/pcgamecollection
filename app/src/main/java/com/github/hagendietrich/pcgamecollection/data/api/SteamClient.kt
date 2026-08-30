@@ -189,6 +189,7 @@ class SteamClient {
             val response = client.get(url) {
                 parameter("key", apiKey)
                 parameter("appid", appId)
+                parameter("l", "en") // Ensure English descriptions
             }
             
             if (response.status == HttpStatusCode.OK) {
