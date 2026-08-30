@@ -86,20 +86,25 @@ class GameDetailViewModel(
                         enrichmentAttempted = true
                         
                         val needsEnrichment = game.summary.isNullOrBlank() || 
-                                              game.screenshotUrls.isEmpty() || 
-                                              game.developers.isEmpty() ||
-                                              game.storeUrls.isEmpty() ||
-                                              game.gameModes.isEmpty() ||
-                                              game.franchises.isEmpty() ||
-                                              game.series.isEmpty() ||
                                               game.category == null ||
-                                              (game.category == 0 && game.summary.isNullOrBlank()) // Ensure we fetch for newly added games
+                                              (game.achievements.isEmpty() && (game.sourceIds.containsKey("STEAM") || game.sourceIds.containsKey("GOG") || game.sourceIds.containsKey("EPIC"))) ||
+                                              ((game.playtimeSource == null || (game.playtimeSource == "HLTB" && game.hltbMain == game.hltbMainExtra)) && (game.category == 0 || game.category == 3 || game.category in 8..11))
                         
                         if (needsEnrichment) {
                             enrichGame()
                         }
                     }
                 }
+            }
+        }
+    }
+
+    fun refreshMetadata() {
+        viewModelScope.launch {
+            try {
+                gameRepository.refreshGameMetadata(gameId, force = true)
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
         }
     }

@@ -1,6 +1,7 @@
 package com.github.hagendietrich.pcgamecollection.data.database
 
 import androidx.room.TypeConverter
+import com.github.hagendietrich.pcgamecollection.data.model.Achievement
 import com.github.hagendietrich.pcgamecollection.data.model.CompletionStatus
 import com.github.hagendietrich.pcgamecollection.data.model.PlatformPrice
 import kotlinx.serialization.encodeToString
@@ -78,6 +79,20 @@ class Converters {
             CompletionStatus.valueOf(value)
         } catch (e: Exception) {
             CompletionStatus.BACKLOG
+        }
+    }
+
+    @TypeConverter
+    fun fromAchievements(value: List<Achievement>): String {
+        return Json.encodeToString(value)
+    }
+
+    @TypeConverter
+    fun toAchievements(value: String): List<Achievement> {
+        return try {
+            Json.decodeFromString(value)
+        } catch (e: Exception) {
+            emptyList()
         }
     }
 }

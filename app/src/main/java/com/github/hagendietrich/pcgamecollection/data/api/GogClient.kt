@@ -1,11 +1,15 @@
 package com.github.hagendietrich.pcgamecollection.data.api
 
+import android.util.Log
 import io.ktor.client.*
 import io.ktor.client.call.*
 import io.ktor.client.plugins.contentnegotiation.*
 import io.ktor.client.request.*
+import io.ktor.client.statement.*
+import io.ktor.http.*
 import io.ktor.serialization.kotlinx.json.*
 import kotlinx.coroutines.delay
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.*
 
 /** Current price of a GOG product in EUR. */
@@ -36,6 +40,36 @@ class GogClient {
         val title: String,
         val playtimeMinutes: Int = 0,
         val gogId: String
+    )
+
+    @Serializable
+    data class GogAchievementSchema(
+        val api_key: String? = null, // In products expand it might be 'achievement_id' or 'api_key'
+        val achievement_id: String? = null,
+        val name: String,
+        val description: String? = null,
+        val unlocked_icon_url: String? = null,
+        val locked_icon_url: String? = null,
+        val visible_before_unlocking: Boolean = true
+    ) {
+        val bestKey: String get() = api_key ?: achievement_id ?: ""
+    }
+
+    @Serializable
+    data class GogProductResponse(
+        val achievements: List<GogAchievementSchema> = emptyList()
+    )
+
+    @Serializable
+    data class GogPlayerAchievementsResponse(
+        val items: List<GogPlayerAchievement> = emptyList()
+    )
+
+    @Serializable
+    data class GogPlayerAchievement(
+        val achievement_key: String,
+        val unlocked: Boolean = false,
+        val unlock_date: String? = null
     )
 
     /**
@@ -205,5 +239,192 @@ class GogClient {
         }
         println("GOG Sync: Finished. Total games collected: ${allGames.size}")
         return allGames
+    }
+
+    suspend fun resolveUserId(username: String): String? {
+        val url = "https://www.gog.com/u/$username"
+        Log.d("GogClient", "Resolving UserID for $username from $url")
+        return try {
+            val response: String = client.get(url) {
+                header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+            }.body()
+            
+            // Try Pattern 1: profileUser object in gogData
+            val pattern1 = Regex("\"profileUser\"\\s*:\\s*\\{[^}]*\"id\"\\s*:\\s*\"(\\d+)\"")
+            // Try Pattern 2: direct userId field
+            val pattern2 = Regex("\"userId\"\\s*:\\s*\"(\\d+)\"")
+            // Try Pattern 3: user ID in avatar URL
+            val pattern3 = Regex("/user/(\\d+)/")
+
+            val userId = pattern1.find(response)?.groupValues?.get(1)
+                ?: pattern2.find(response)?.groupValues?.get(1)
+                ?: pattern3.find(response)?.groupValues?.get(1)
+            
+            Log.d("GogClient", "Resolved UserID: $userId")
+            userId
+        } catch (e: Exception) {
+            Log.e("GogClient", "Error resolving UserID: ${e.message}")
+            null
+        }
+    }
+
+    suspend fun fetchAchievementSchema(productId: String): List<GogAchievementSchema> {
+        val url = "https://api.gog.com/products/$productId"
+        Log.d("GogClient", "Fetching achievement metadata for Product $productId from $url")
+        return try {
+            val response = client.get(url)
+            if (response.status == HttpStatusCode.OK) {
+                val responseBody = response.bodyAsText()
+                val json = Json { ignoreUnknownKeys = true; coerceInputValues = true }
+                val product = json.decodeFromString<JsonObject>(responseBody)
+                
+                // Try to find achievements in the product JSON
+                val achs = product["achievements"]?.jsonArray
+                if (achs != null) {
+                    Log.d("GogClient", "GOG schema response: found ${achs.size} achievements")
+                    return json.decodeFromString<List<GogAchievementSchema>>(achs.toString())
+                }
+            }
+            Log.d("GogClient", "Product API did not contain achievements list, status: ${response.status}")
+            emptyList()
+        } catch (e: Exception) {
+            Log.e("GogClient", "Error fetching GOG achievement schema: ${e.message}")
+            emptyList()
+        }
+    }
+
+    suspend fun fetchUserAchievements(productId: String, userId: String, username: String? = null): List<GogPlayerAchievement> {
+        val url = "https://gameplay.gog.com/clients/$productId/users/$userId/achievements"
+        Log.d("GogClient", "Fetching user achievements for Product $productId, User $userId from $url")
+        return try {
+            val response = client.get(url)
+            if (response.status == HttpStatusCode.OK) {
+                val playerResponse: GogPlayerAchievementsResponse = response.body()
+                Log.d("GogClient", "GOG user achievements response: found ${playerResponse.items.size} entries")
+                playerResponse.items
+            } else {
+                val errorBody = response.bodyAsText()
+                Log.e("GogClient", "Error fetching GOG user achievements: Status ${response.status}, Body: $errorBody")
+                
+                // Fallback: Scrape public profile if Unauthorized or Not Found
+                if (username != null && (response.status == HttpStatusCode.Unauthorized || response.status == HttpStatusCode.Forbidden || response.status == HttpStatusCode.NotFound)) {
+                    return fetchUserAchievementsScraped(productId, username, userId)
+                }
+                emptyList()
+            }
+        } catch (e: Exception) {
+            Log.e("GogClient", "Error fetching GOG user achievements: ${e.message}")
+            // Catch-all fallback
+            if (username != null) fetchUserAchievementsScraped(productId, username, userId) else emptyList()
+        }
+    }
+
+    /**
+     * Fallback method that scrapes the user's public profile for achievement status.
+     * Only works if the profile is set to "Public".
+     */
+    private suspend fun fetchUserAchievementsScraped(productId: String, username: String, userId: String? = null): List<GogPlayerAchievement> {
+        val url = if (userId != null) {
+            "https://www.gog.com/u/$username/game/$productId?sort_user_id=$userId&sort=user_unlock_date"
+        } else {
+            "https://www.gog.com/u/$username/game/$productId"
+        }
+        Log.d("GogClient", "Attempting to scrape public profile for achievements: $url")
+        
+        return try {
+            val response: String = client.get(url) {
+                header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+                header("Accept-Language", "en-US,en;q=0.9")
+            }.bodyAsText()
+            
+            val achievements = mutableListOf<GogPlayerAchievement>()
+            
+            // Look for the global profilesData object
+            val profilesDataRegex = Regex("window\\.profilesData\\.achievements\\s*=\\s*(.*?);")
+            val match = profilesDataRegex.find(response)
+            
+            if (match != null) {
+                val jsonStr = match.groupValues[1]
+                Log.d("GogClient", "Found profilesData.achievements JSON blob")
+                
+                val json = Json { ignoreUnknownKeys = true }
+                val achsArray = json.parseToJsonElement(jsonStr).jsonArray
+                
+                achsArray.forEach { achElement ->
+                    val entry = achElement.jsonObject
+                    val ach = entry["achievement"]?.jsonObject ?: return@forEach
+                    
+                    val key = ach["achievement_id"]?.jsonPrimitive?.content 
+                        ?: ach["api_key"]?.jsonPrimitive?.content
+                        ?: ach["id"]?.jsonPrimitive?.content
+                    
+                    // The stats object is keyed by UserID
+                    val stats = entry["stats"]?.jsonObject
+                    var isUnlocked = false
+                    
+                    if (stats != null) {
+                        // Check if ANY user in stats has unlocked it (usually only one user present)
+                        for (uId in stats.keys) {
+                            val userStats = stats[uId]?.jsonObject
+                            if (userStats?.get("isUnlocked")?.jsonPrimitive?.boolean == true ||
+                                userStats?.get("is_unlocked")?.jsonPrimitive?.boolean == true) {
+                                isUnlocked = true
+                                break
+                            }
+                        }
+                    }
+                    
+                    if (key != null) {
+                        achievements.add(GogPlayerAchievement(key, isUnlocked))
+                    }
+                }
+            } else {
+                Log.w("GogClient", "Could not find window.profilesData.achievements in HTML")
+                
+                // Fallback to __NEXT_DATA__
+                val nextDataRegex = Regex("<script id=\"__NEXT_DATA__\"[^>]*>(.*?)</script>")
+                val nextDataMatch = nextDataRegex.find(response)
+                
+                if (nextDataMatch != null) {
+                    val jsonStr = nextDataMatch.groupValues[1]
+                    val jsonObj = Json { ignoreUnknownKeys = true }.parseToJsonElement(jsonStr).jsonObject
+                    
+                    fun findAchievements(element: JsonElement?): JsonArray? {
+                        if (element == null) return null
+                        if (element is JsonObject) {
+                            element["achievements"]?.jsonArray?.let { return it }
+                            for (k in element.keys) {
+                                findAchievements(element[k])?.let { return it }
+                            }
+                        } else if (element is JsonArray) {
+                            for (item in element) {
+                                findAchievements(item)?.let { return it }
+                            }
+                        }
+                        return null
+                    }
+
+                    val achs = findAchievements(jsonObj)
+                    achs?.forEach { achElement ->
+                        val ach = achElement.jsonObject
+                        val key = ach["achievement_id"]?.jsonPrimitive?.content 
+                            ?: ach["api_key"]?.jsonPrimitive?.content
+                        val unlocked = ach["is_unlocked"]?.jsonPrimitive?.boolean 
+                            ?: ach["unlocked"]?.jsonPrimitive?.boolean 
+                            ?: false
+                        
+                        if (key != null) {
+                            achievements.add(GogPlayerAchievement(key, unlocked))
+                        }
+                    }
+                }
+            }
+
+            Log.d("GogClient", "Scraped ${achievements.size} achievement statuses from public profile")
+            achievements
+        } catch (e: Exception) {
+            Log.e("GogClient", "Error scraping GOG achievements: ${e.message}")
+            emptyList()
+        }
     }
 }

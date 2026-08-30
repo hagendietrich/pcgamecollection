@@ -41,6 +41,13 @@ data class Game(
     val personalRating: Int? = null,
     val parentIgdbId: Long? = null,
     val category: Int? = null, // 0 = Main Game, 1 = DLC, 2 = Expansion, 3 = Bundle, etc.
+    val hltbMain: Int? = null, // Main story playtime in minutes
+    val hltbMainExtra: Int? = null, // Main + Extra playtime in minutes
+    val hltbCompletionist: Int? = null, // Completionist playtime in minutes
+    val playtimeSource: String? = null, // e.g., "HLTB", "IGDB"
+    val notes: String? = null,
+    val achievements: List<Achievement> = emptyList(),
+    val achievementsSource: String? = null, // "Steam", "GOG", "Epic"
     val dateAdded: Long = System.currentTimeMillis() // Timestamp when the game was added to the database
 )
 

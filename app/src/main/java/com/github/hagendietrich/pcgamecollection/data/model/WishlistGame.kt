@@ -36,6 +36,10 @@ data class WishlistGame(
     val igdbId: Long? = null,
     val parentIgdbId: Long? = null,
     val category: Int? = null,
+    val hltbMain: Int? = null,
+    val hltbMainExtra: Int? = null,
+    val hltbCompletionist: Int? = null,
+    val playtimeSource: String? = null,
     val platformPrices: List<PlatformPrice> = emptyList(),
     val dateAdded: Long = System.currentTimeMillis(),
     val notes: String? = null

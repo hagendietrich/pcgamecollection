@@ -4,6 +4,7 @@ import com.github.hagendietrich.pcgamecollection.data.api.BattleNetClient
 import com.github.hagendietrich.pcgamecollection.data.api.EpicClient
 import android.util.Log
 import com.github.hagendietrich.pcgamecollection.data.api.GogClient
+import com.github.hagendietrich.pcgamecollection.data.api.HltbClient
 import com.github.hagendietrich.pcgamecollection.data.api.IgdbClient
 import com.github.hagendietrich.pcgamecollection.data.api.SteamClient
 import com.github.hagendietrich.pcgamecollection.data.api.UbisoftClient
@@ -11,6 +12,7 @@ import com.github.hagendietrich.pcgamecollection.data.api.models.*
 import com.github.hagendietrich.pcgamecollection.data.dao.GameDao
 import com.github.hagendietrich.pcgamecollection.data.dao.IgnoredGameDao
 import com.github.hagendietrich.pcgamecollection.data.dao.WishlistGameDao
+import com.github.hagendietrich.pcgamecollection.data.model.Achievement
 import com.github.hagendietrich.pcgamecollection.data.model.BackupData
 import com.github.hagendietrich.pcgamecollection.data.model.CompletionStatus
 import com.github.hagendietrich.pcgamecollection.data.model.Game
@@ -51,6 +53,7 @@ class GameRepository(
     private val epicClient: EpicClient,
     private val ubisoftClient: UbisoftClient,
     private val battleNetClient: BattleNetClient,
+    private val hltbClient: HltbClient,
     private val settingsRepository: SettingsRepository
 ) {
 
@@ -173,6 +176,12 @@ class GameRepository(
     ): SyncResult = withContext(Dispatchers.IO) {
         onProgress(0.05f, "Exchanging Epic code...")
         val tokenResponse = epicClient.exchangeCodeForToken(code) ?: return@withContext SyncResult(0, 0, 0)
+        
+        // Save Account ID for achievements
+        if (tokenResponse.accountId != null) {
+            val email = settingsRepository.epicEmail.firstOrNull() ?: ""
+            settingsRepository.saveEpicCredentials(email, null, tokenResponse.accountId)
+        }
         
         onProgress(0.2f, "Fetching Epic library...")
         val epicRecords = epicClient.fetchLibraryItems(tokenResponse.accessToken)
@@ -448,6 +457,9 @@ class GameRepository(
 
         onProgress(0.02f, "Resolving Steam ID...")
         val steamId = steamClient.resolveVanityUrl(apiKey, steamIdInput) ?: return@withContext SyncResult(0, 0, 0)
+        
+        // Save the resolved numeric ID for future use (achievements)
+        settingsRepository.saveLastSteamId(steamId)
 
         onProgress(0.05f, "Fetching games from Steam API...")
         val steamGames = steamClient.fetchOwnedGames(apiKey, steamId)
@@ -658,6 +670,13 @@ class GameRepository(
         onProgress: (progress: Float, message: String) -> Unit = { _, _ -> }
     ): SyncResult = withContext(Dispatchers.IO) {
         onProgress(0.05f, "Fetching games from GOG...")
+        
+        // Resolve User ID for achievements
+        val userId = gogClient.resolveUserId(username)
+        if (userId != null) {
+            settingsRepository.saveGogUserId(userId)
+        }
+        
         val gogGames = gogClient.fetchPublicGames(username)
         if (gogGames.isEmpty()) return@withContext SyncResult(0, 0, 0)
 
@@ -1606,23 +1625,18 @@ class GameRepository(
     /**
      * Fetches missing metadata (summary, screenshots, url) for a game if not already present.
      */
-    suspend fun refreshGameMetadata(gameId: Int) = withContext(Dispatchers.IO) {
+    suspend fun refreshGameMetadata(gameId: Int, force: Boolean = false) = withContext(Dispatchers.IO) {
         val existing = gameDao.getGameById(gameId) ?: return@withContext
         val igdbId = existing.igdbId ?: return@withContext
 
         // Refresh if missing summary OR screenshots OR companies OR store links OR game modes OR franchises OR series
         // OR if it's a DLC/Bundle and we don't have a parent link yet.
         val needsRefresh = existing.summary.isNullOrBlank() || 
-                           existing.screenshotUrls.isEmpty() || 
-                           existing.developers.isEmpty() ||
-                           existing.storeUrls.isEmpty() ||
-                           existing.gameModes.isEmpty() ||
-                           existing.franchises.isEmpty() ||
-                           existing.series.isEmpty() ||
                            existing.category == null ||
-                           (existing.category in 1..3 && existing.parentIgdbId == null)
+                           (existing.category in 1..3 && existing.parentIgdbId == null) ||
+                           ((existing.playtimeSource == null || (existing.playtimeSource == "HLTB" && existing.hltbMain == existing.hltbMainExtra)) && (existing.category == 0 || existing.category == 3 || existing.category in 8..11))
 
-        if (!needsRefresh) return@withContext
+        if (!needsRefresh && !force) return@withContext
 
         println("Enriching metadata for: ${existing.title} (IGDB ID: $igdbId)")
 
@@ -1639,6 +1653,38 @@ class GameRepository(
         val igdbGame = igdbGames.firstOrNull() ?: run {
             Log.d("GameRepository", "Enrichment Failed: No game found on IGDB for ID $igdbId")
             return@withContext
+        }
+
+        // Fetch ALL external game entries (store links) to see if we can find a Steam/GOG/HLTB ID we missed
+        val externals = igdbClient.getExternalGamesForGame(clientId, igdbId)
+        Log.d("GameRepository", "Enrichment: Scavenging ${externals.size} externals for ${existing.title} (ID: $igdbId)")
+        
+        val scavengedSourceIds = mutableMapOf<String, String>()
+        var scavengedHltbId: String? = null
+        
+        externals.forEach { ext ->
+            val uid = ext.uid
+            val url = ext.url
+            Log.d("GameRepository", "Enrichment [Scavenge]: Category=${ext.category}, UID=$uid, URL=$url")
+            
+            when (ext.category) {
+                IgdbExternalCategory.STEAM -> {
+                    val id = uid ?: url?.let { Regex("/app/(\\d+)").find(it)?.groupValues?.get(1) }
+                    if (!id.isNullOrBlank()) scavengedSourceIds["STEAM"] = id
+                }
+                IgdbExternalCategory.GOG -> {
+                    val id = uid ?: url?.let { it.trimEnd('/').substringAfterLast("/") }
+                    if (!id.isNullOrBlank() && id.all { it.isDigit() }) scavengedSourceIds["GOG"] = id
+                }
+                IgdbExternalCategory.EPIC_GAMES -> {
+                    val slug = url?.substringAfter("/p/")?.substringBefore("?")?.removeSuffix("/")
+                    if (!slug.isNullOrBlank()) scavengedSourceIds["EPIC"] = slug
+                }
+                IgdbExternalCategory.HOW_LONG_TO_BEAT -> {
+                    val id = uid ?: url?.let { it.trimEnd('/').substringAfterLast("/") }
+                    if (!id.isNullOrBlank() && id.all { it.isDigit() }) scavengedHltbId = id
+                }
+            }
         }
 
         // Handle bundles that don't have a parent_game link but are linked from a main game via 'bundles' list.
@@ -1666,12 +1712,17 @@ class GameRepository(
             series = (listOfNotNull(igdbGame.collection?.name) + (igdbGame.collections?.mapNotNull { it.name } ?: emptyList())).distinct(),
             gameModes = if (latestExisting.isGameModeManual) latestExisting.gameModes else mapIgdbGameModes(igdbGame.gameModes),
             genres = if (latestExisting.isGenreManual) latestExisting.genres else (igdbGame.genres?.map { it.name } ?: latestExisting.genres),
-            storeUrls = extractStoreUrls(igdbGame, latestExisting.sourceIds),
+            sourceIds = latestExisting.sourceIds.toMutableMap().apply { putAll(scavengedSourceIds.filter { it.value.isNotBlank() }) },
+            storeUrls = extractStoreUrls(igdbGame, latestExisting.sourceIds.toMutableMap().apply { putAll(scavengedSourceIds.filter { it.value.isNotBlank() }) }),
             parentIgdbId = parentId,
             category = igdbGame.category
         )
         
         gameDao.updateGame(updatedGame)
+
+        if (scavengedSourceIds.isNotEmpty()) {
+            Log.d("GameRepository", "Scavenged external IDs for ${updatedGame.title}: $scavengedSourceIds")
+        }
 
         // Reverse enrichment: update any existing games in the library that are listed as DLCs/Bundles of THIS game.
         val childIds = (igdbGame.dlcs ?: emptyList()) + 
@@ -1686,6 +1737,93 @@ class GameRepository(
                     gameDao.updateGame(child.copy(parentIgdbId = igdbId))
                     println("Enrichment: Linked child ${child.title} to parent ${latestExisting.title}")
                 }
+        }
+
+        // HLTB / IGDB Playtime Enrichment
+        val isPlaytimeIncomplete = updatedGame.hltbMain == null || 
+                                   updatedGame.hltbMainExtra == 0 || 
+                                   (updatedGame.playtimeSource == "HLTB" && updatedGame.hltbMain == updatedGame.hltbMainExtra)
+
+        if ((isPlaytimeIncomplete || force) && (updatedGame.category == 0 || updatedGame.category == 3 || updatedGame.category in 8..11)) {
+            Log.d("GameRepository", "Enrichment: Searching playtime data for ${updatedGame.title} (IGDB ID: $igdbId)")
+            
+            val steamId = updatedGame.sourceIds["STEAM"]
+            val gogId = updatedGame.sourceIds["GOG"]
+            
+            var hltbData: com.github.hagendietrich.pcgamecollection.data.api.CodepotatoesGame? = null
+            
+            // 1. Try Scavenged HLTB ID
+            if (scavengedHltbId != null) {
+                Log.d("GameRepository", "Enrichment: Trying HLTB ID lookup: $scavengedHltbId")
+                hltbData = hltbClient.getGameByHltbId(scavengedHltbId)
+            }
+            
+            // 2. Try Steam ID
+            if (hltbData == null && steamId != null) {
+                Log.d("GameRepository", "Enrichment: Trying Steam ID lookup: $steamId")
+                hltbData = hltbClient.getGameBySteamId(steamId)
+            }
+            
+            // 3. Try GOG ID
+            if (hltbData == null && gogId != null) {
+                Log.d("GameRepository", "Enrichment: Trying GOG ID lookup: $gogId")
+                hltbData = hltbClient.getGameByGogId(gogId)
+            }
+            
+            // 4. Try Title Search
+            if (hltbData == null) {
+                Log.d("GameRepository", "Enrichment: Trying title search fallback: ${updatedGame.title}")
+                hltbData = hltbClient.searchGame(updatedGame.title)
+            }
+
+            if (hltbData != null) {
+                val bestExtraHours = hltbData.getBestExtra()
+                val mainMin = hltbClient.toMinutes(hltbData.mainStory)
+                val extraMin = hltbClient.toMinutes(bestExtraHours)
+                val compMin = hltbClient.toMinutes(hltbData.completionist)
+                
+                Log.d("GameRepository", "HLTB Data for ${updatedGame.title}: Main=${hltbData.mainStory}h, BestExtra=${bestExtraHours}h, Comp=${hltbData.completionist}h [Raw: swExtras=${hltbData.mainStoryWithExtras}, pExtra=${hltbData.mainPlusExtra}, mExtra=${hltbData.mainExtra}]")
+
+                gameDao.updateGame(gameDao.getGameById(gameId)!!.copy(
+                    hltbMain = mainMin,
+                    hltbMainExtra = extraMin,
+                    hltbCompletionist = compMin,
+                    playtimeSource = "HLTB"
+                ))
+                Log.d("GameRepository", "Enrichment: Successfully saved HLTB data for ${updatedGame.title}")
+            } else {
+                Log.d("GameRepository", "Enrichment: HLTB failed for ${updatedGame.title}, falling back to IGDB Time to Beat...")
+                
+                // 5. Fallback to IGDB Time to Beat
+                val ttb = igdbClient.getGameTimeToBeat(clientId, igdbId)
+                if (ttb != null) {
+                    val mainMin = ttb.bestHastly / 60
+                    val extraMin = ttb.normally / 60
+                    val compMin = ttb.completely / 60
+                    
+                    Log.d("GameRepository", "IGDB TimeToBeat for ${updatedGame.title}: Hastly=${ttb.bestHastly}s (${mainMin}m), Normally=${ttb.normally}s (${extraMin}m), Completely=${ttb.completely}s (${compMin}m)")
+                    
+                    gameDao.updateGame(gameDao.getGameById(gameId)!!.copy(
+                        hltbMain = mainMin,
+                        hltbMainExtra = extraMin,
+                        hltbCompletionist = compMin,
+                        playtimeSource = "IGDB"
+                    ))
+                    Log.d("GameRepository", "Enrichment: Successfully saved IGDB data for ${updatedGame.title}")
+                } else {
+                    Log.d("GameRepository", "Enrichment: No HLTB or IGDB playtime data found for ${updatedGame.title}")
+                    gameDao.updateGame(gameDao.getGameById(gameId)!!.copy(
+                        playtimeSource = "NONE"
+                    ))
+                }
+            }
+        } else {
+            Log.d("GameRepository", "Enrichment: Skipping playtime search for ${updatedGame.title} (Reason: Incomplete=${isPlaytimeIncomplete}, Force=$force, Category=${updatedGame.category})")
+        }
+
+        // Achievement Enrichment
+        if (force || updatedGame.achievements.isEmpty()) {
+            fetchAchievementsForGame(gameId)
         }
 
         println("Enrichment Complete for: ${existing.title}")
@@ -1803,5 +1941,149 @@ class GameRepository(
         }
         
         covers.toList()
+    }
+
+    suspend fun fetchAchievementsForGame(gameId: Int) = withContext(Dispatchers.IO) {
+        val game = gameDao.getGameById(gameId) ?: run {
+            Log.e("GameRepository", "Achievement Fetch: Game not found for ID $gameId")
+            return@withContext
+        }
+        Log.d("GameRepository", "Achievement Fetch: Starting for '${game.title}' (ID: $gameId)")
+        
+        // 1. Steam (Priority)
+        val steamAppId = game.sourceIds["STEAM"]?.toIntOrNull()
+        if (steamAppId != null) {
+            Log.d("GameRepository", "Achievement Fetch [Steam]: Found AppID $steamAppId")
+            val apiKey = settingsRepository.steamApiKey.firstOrNull()
+            var steamId = settingsRepository.lastSteamId.firstOrNull()
+            
+            if (!apiKey.isNullOrBlank() && !steamId.isNullOrBlank()) {
+                // If ID is not numeric, try to resolve it one last time
+                if (steamId.any { it.isLetter() }) {
+                    Log.d("GameRepository", "Achievement Fetch [Steam]: ID looks like vanity name, resolving: $steamId")
+                    steamId = steamClient.resolveVanityUrl(apiKey, steamId)
+                    if (steamId != null) settingsRepository.saveLastSteamId(steamId)
+                }
+
+                if (steamId != null) {
+                    try {
+                        val schema = steamClient.fetchAchievementSchema(apiKey, steamAppId)
+                        val progress = steamClient.fetchUserAchievements(apiKey, steamId, steamAppId)
+                    
+                        if (schema.isNotEmpty()) {
+                            val achievements = schema.map { def ->
+                                val userAch = progress.find { it.apiname == def.name }
+                                Achievement(
+                                    name = def.displayName ?: def.name,
+                                    description = def.description,
+                                    iconUrl = def.icon,
+                                    isUnlocked = userAch?.achieved == 1,
+                                    unlockTime = if (userAch?.unlocktime != 0L) userAch?.unlocktime else null,
+                                    isHidden = def.hidden == 1
+                                )
+                            }
+                            gameDao.updateGame(game.copy(
+                                achievements = achievements,
+                                achievementsSource = "Steam"
+                            ))
+                            Log.i("GameRepository", "Achievement Fetch [Steam]: Successfully saved ${achievements.size} achievements")
+                            return@withContext
+                        }
+                    } catch (e: Exception) {
+                        Log.e("GameRepository", "Achievement Fetch [Steam]: Error: ${e.message}")
+                    }
+                }
+            } else {
+                Log.d("GameRepository", "Achievement Fetch [Steam]: Missing API Key or SteamID")
+            }
+        }
+
+        // 2. GOG (Fallback 1)
+        val gogId = game.sourceIds["GOG"]
+        if (gogId != null) {
+            Log.d("GameRepository", "Achievement Fetch [GOG]: Found GOG ID $gogId")
+            var userId = settingsRepository.gogUserId.firstOrNull()
+            val username = settingsRepository.lastGogUsername.firstOrNull()
+            
+            // Try to resolve UserID on the fly if missing
+            if (userId.isNullOrBlank() && !username.isNullOrBlank()) {
+                Log.d("GameRepository", "Achievement Fetch [GOG]: UserID missing, attempting to resolve for $username...")
+                userId = gogClient.resolveUserId(username)
+                if (userId != null) {
+                    settingsRepository.saveGogUserId(userId)
+                }
+            }
+
+            if (!userId.isNullOrBlank()) {
+                try {
+                    val schema = gogClient.fetchAchievementSchema(gogId)
+                    val progress = gogClient.fetchUserAchievements(gogId, userId, username)
+                    
+                    if (schema.isNotEmpty()) {
+                        val achievements = schema.map { def ->
+                            val userAch = progress.find { it.achievement_key == def.bestKey }
+                                ?: progress.find { it.achievement_key.equals(def.name, ignoreCase = true) }
+                            Achievement(
+                                name = def.name,
+                                description = def.description,
+                                iconUrl = def.unlocked_icon_url,
+                                isUnlocked = userAch?.unlocked == true,
+                                unlockTime = null,
+                                isHidden = !def.visible_before_unlocking
+                            )
+                        }
+                        gameDao.updateGame(game.copy(
+                            achievements = achievements,
+                            achievementsSource = "GOG"
+                        ))
+                        Log.i("GameRepository", "Achievement Fetch [GOG]: Successfully saved ${achievements.size} achievements")
+                        return@withContext
+                    }
+                } catch (e: Exception) {
+                    Log.e("GameRepository", "Achievement Fetch [GOG]: Error: ${e.message}")
+                }
+            } else {
+                Log.w("GameRepository", "Achievement Fetch [GOG]: Could not determine User ID")
+            }
+        }
+
+        // 3. Epic (Fallback 2)
+        val epicSlug = game.sourceIds["EPIC"]
+        if (epicSlug != null) {
+            Log.d("GameRepository", "Achievement Fetch [Epic]: Found slug $epicSlug")
+            try {
+                val sandboxId = epicClient.getSandboxIdFromSlug(epicSlug)
+                Log.d("GameRepository", "Achievement Fetch [Epic]: Resolved SandboxID: $sandboxId")
+                if (sandboxId != null) {
+                    val schema = epicClient.fetchAchievementSchema(sandboxId)
+                    Log.d("GameRepository", "Achievement Fetch [Epic]: Schema results: ${schema.size}")
+                    
+                    if (schema.isNotEmpty()) {
+                        val achievements = schema.map { def ->
+                            Achievement(
+                                name = def.unlockedDisplayName ?: def.name,
+                                description = def.unlockedDescription,
+                                iconUrl = def.unlockedIconLink,
+                                isUnlocked = false,
+                                unlockTime = null,
+                                isHidden = false
+                            )
+                        }
+                        gameDao.updateGame(game.copy(
+                            achievements = achievements,
+                            achievementsSource = "Epic"
+                        ))
+                        Log.i("GameRepository", "Achievement Fetch [Epic]: Successfully saved ${achievements.size} definitions")
+                        return@withContext
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("GameRepository", "Achievement Fetch [Epic]: Error: ${e.message}", e)
+            }
+        } else {
+            Log.d("GameRepository", "Achievement Fetch [Epic]: No Epic slug found.")
+        }
+        
+        Log.d("GameRepository", "Achievement Fetch: Finished with no results for '${game.title}'")
     }
 }

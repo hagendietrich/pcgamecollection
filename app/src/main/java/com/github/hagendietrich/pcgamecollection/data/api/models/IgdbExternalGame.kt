@@ -32,4 +32,5 @@ object IgdbExternalCategory {
     const val UBISOFT_CONNECT = 34
     const val ORIGIN = 35
     const val PLAYSTATION_STORE_US = 36
+    const val HOW_LONG_TO_BEAT = 48
 }

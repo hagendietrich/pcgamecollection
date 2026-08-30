@@ -1,5 +1,6 @@
 package com.github.hagendietrich.pcgamecollection.data.api
 
+import android.util.Log
 import io.ktor.client.*
 import io.ktor.client.call.*
 import io.ktor.client.engine.cio.*
@@ -171,6 +172,24 @@ class EpicClient {
         val cursor: String? = null
     )
 
+    @Serializable
+    data class EpicAchievementDefinition(
+        val name: String,
+        val unlockedDisplayName: String? = null,
+        val lockedDisplayName: String? = null,
+        val unlockedDescription: String? = null,
+        val lockedDescription: String? = null,
+        val unlockedIconLink: String? = null,
+        val isBase: Boolean = true
+    )
+
+    @Serializable
+    data class EpicPlayerAchievement(
+        val achievementName: String,
+        val unlocked: Boolean = false,
+        val unlockDate: String? = null
+    )
+
     /**
      * Fetches the current price of an Epic Games Store product in EUR (German region).
      * Prices are returned in major units (e.g. 39.99).
@@ -237,6 +256,156 @@ class EpicClient {
         } catch (e: Exception) {
             println("Epic Price Error for slug $productSlug: ${e.message}")
             null
+        }
+    }
+
+    suspend fun getSandboxIdFromSlug(productSlug: String): String? {
+        val url = "https://store.epicgames.com/graphql"
+        Log.d("EpicClient", "Resolving SandboxID for slug $productSlug from $url")
+        val query = """
+            query searchStoreQuery(${'$'}keywords: String, ${'$'}country: String!) {
+              Catalog {
+                searchStore(keywords: ${'$'}keywords, country: ${'$'}country) {
+                  elements {
+                    namespace
+                    productSlug
+                  }
+                }
+              }
+            }
+        """.trimIndent()
+
+        return try {
+            val response: JsonObject = client.post(url) {
+                contentType(ContentType.Application.Json)
+                header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+                setBody(buildJsonObject {
+                    put("query", query)
+                    put("variables", buildJsonObject {
+                        put("keywords", productSlug)
+                        put("country", "DE")
+                    })
+                })
+            }.body()
+
+            val elements = response["data"]?.jsonObject?.get("Catalog")?.jsonObject
+                ?.get("searchStore")?.jsonObject?.get("elements")?.jsonArray ?: return null
+
+            val element = elements.map { it.jsonObject }.find { 
+                it["productSlug"]?.jsonPrimitive?.content == productSlug 
+            } ?: elements.firstOrNull()?.jsonObject
+
+            val sandboxId = element?.get("namespace")?.jsonPrimitive?.content
+            Log.d("EpicClient", "Resolved SandboxID: $sandboxId")
+            sandboxId
+        } catch (e: Exception) {
+            Log.e("EpicClient", "Error resolving SandboxID: ${e.message}", e)
+            null
+        }
+    }
+
+    suspend fun fetchAchievementSchema(sandboxId: String): List<EpicAchievementDefinition> {
+        val url = "https://store.epicgames.com/graphql"
+        Log.d("EpicClient", "Fetching achievement schema for Sandbox $sandboxId from $url")
+        val query = """
+            query Achievement(${'$'}sandboxId: String!, ${'$'}locale: String!) {
+              Achievement {
+                productAchievementsRecordBySandbox(sandboxId: ${'$'}sandboxId, locale: ${'$'}locale) {
+                  achievements {
+                    achievement {
+                      name
+                      unlockedDisplayName
+                      lockedDisplayName
+                      unlockedDescription
+                      lockedDescription
+                      unlockedIconLink
+                      isBase
+                    }
+                  }
+                }
+              }
+            }
+        """.trimIndent()
+
+        return try {
+            val response: JsonObject = client.post(url) {
+                contentType(ContentType.Application.Json)
+                header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+                setBody(buildJsonObject {
+                    put("query", query)
+                    put("variables", buildJsonObject {
+                        put("sandboxId", sandboxId)
+                        put("locale", "en-US")
+                    })
+                })
+            }.body()
+
+            val record = response["data"]?.jsonObject?.get("Achievement")?.jsonObject
+                ?.get("productAchievementsRecordBySandbox")?.jsonObject ?: return emptyList()
+            
+            val achievementsArray = record["achievements"]?.jsonArray ?: return emptyList()
+            Log.d("EpicClient", "Epic schema response: found ${achievementsArray.size} achievements")
+            
+            achievementsArray.map { element ->
+                val ach = element.jsonObject["achievement"]!!.jsonObject
+                Json { ignoreUnknownKeys = true }.decodeFromJsonElement<EpicAchievementDefinition>(ach)
+            }
+        } catch (e: Exception) {
+            Log.e("EpicClient", "Error fetching Epic achievement schema: ${e.message}", e)
+            emptyList()
+        }
+    }
+
+    suspend fun fetchUserAchievements(accessToken: String, accountId: String, sandboxId: String): List<EpicPlayerAchievement> {
+        val query = """
+            query PlayerGameAchievementProgress(${'$'}epicAccountId: String!, ${'$'}sandboxId: String!, ${'$'}locale: String!) {
+              PlayerAchievement {
+                playerAchievementGameRecordsBySandbox(
+                  epicAccountId: ${'$'}epicAccountId
+                  sandboxId: ${'$'}sandboxId
+                  locale: ${'$'}locale
+                ) {
+                  records {
+                    achievements {
+                      achievementName
+                      unlocked
+                      unlockDate
+                    }
+                  }
+                }
+              }
+            }
+        """.trimIndent()
+
+        return try {
+            val response: JsonObject = client.post("https://store.epicgames.com/graphql") {
+                header("Authorization", "Bearer $accessToken")
+                contentType(ContentType.Application.Json)
+                header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+                setBody(buildJsonObject {
+                    put("query", query)
+                    put("variables", buildJsonObject {
+                        put("epicAccountId", accountId)
+                        put("sandboxId", sandboxId)
+                        put("locale", "en-US")
+                    })
+                })
+            }.body()
+
+            val playerAch = response["data"]?.jsonObject?.get("PlayerAchievement")?.jsonObject
+                ?.get("playerAchievementGameRecordsBySandbox")?.jsonObject ?: return emptyList()
+            
+            val records = playerAch["records"]?.jsonArray ?: return emptyList()
+            val firstRecord = records.firstOrNull()?.jsonObject ?: return emptyList()
+            
+            val achievementsArray = firstRecord["achievements"]?.jsonArray ?: return emptyList()
+            
+            achievementsArray.map { element ->
+                Json { ignoreUnknownKeys = true }.decodeFromJsonElement<EpicPlayerAchievement>(element)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            emptyList()
         }
     }
 }

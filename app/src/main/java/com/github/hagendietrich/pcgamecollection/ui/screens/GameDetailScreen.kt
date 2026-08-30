@@ -34,6 +34,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.activity.compose.BackHandler
 import androidx.core.net.toUri
 import coil.compose.AsyncImage
 import com.github.hagendietrich.pcgamecollection.R
@@ -75,6 +77,10 @@ fun GameDetailScreen(
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
     var showReMatchDialog by remember { mutableStateOf(false) }
     var showRatingPicker by remember { mutableStateOf(false) }
+
+    var isEditingNotes by remember { mutableStateOf(false) }
+    var editedNotes by remember { mutableStateOf("") }
+    var showNotesSaveDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -172,6 +178,28 @@ fun GameDetailScreen(
                                 }
                             }
                         }
+                        
+                        // Manual Refresh Button on the far right, aligned with the top of the cover
+                        IconButton(
+                            onClick = { viewModel.refreshMetadata() },
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(end = 0.dp) // Move as much as possible to the right
+                                .size(48.dp)
+                        ) {
+                            Surface(
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f),
+                                modifier = Modifier.size(40.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.CloudDownload, 
+                                    contentDescription = "Refresh Metadata",
+                                    modifier = Modifier.padding(8.dp),
+                                    tint = MaterialTheme.colorScheme.onSecondaryContainer
+                                )
+                            }
+                        }
                     }
                     
                     Spacer(modifier = Modifier.height(24.dp))
@@ -187,6 +215,16 @@ fun GameDetailScreen(
                     val minutes = game.playtimeMinutes % 60
                     InfoRow(label = "Playtime", value = "${hours}h ${minutes}m", isClickable = true, onClick = { showPlaytimePicker = true })
                     
+                    if (game.hltbMain != null) {
+                        PlaytimeComparisonGraph(
+                            userPlaytimeMinutes = game.playtimeMinutes,
+                            hltbMain = game.hltbMain,
+                            hltbMainExtra = game.hltbMainExtra,
+                            hltbCompletionist = game.hltbCompletionist,
+                            source = game.playtimeSource
+                        )
+                    }
+
                     Spacer(modifier = Modifier.height(8.dp))
                     
                     // 5. Platforms
@@ -198,6 +236,12 @@ fun GameDetailScreen(
                             val isOnline = platform == "Steam" || platform == "GOG" || platform == "Epic" || platform == "Ubisoft" || platform == "Battle.net"
                             if (isOnline) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f)
                         }
+                    )
+                    
+                    // Achievement Section
+                    AchievementSection(
+                        achievements = game.achievements,
+                        source = game.achievementsSource
                     )
                     
                     // 6. Labels
@@ -404,6 +448,67 @@ fun GameDetailScreen(
                         Spacer(modifier = Modifier.height(32.dp))
                     }
                     
+                    // 15a. Notes
+                    Text(
+                        text = "Notes:",
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                    if (isEditingNotes) {
+                        BackHandler {
+                            if (editedNotes != (game.notes ?: "")) {
+                                showNotesSaveDialog = true
+                            } else {
+                                isEditingNotes = false
+                            }
+                        }
+                        OutlinedTextField(
+                            value = editedNotes,
+                            onValueChange = { editedNotes = it },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 8.dp)
+                                .onFocusChanged { 
+                                    if (!it.isFocused && isEditingNotes && editedNotes != (game.notes ?: "")) {
+                                        showNotesSaveDialog = true
+                                    }
+                                },
+                            textStyle = MaterialTheme.typography.bodyLarge,
+                            placeholder = { Text("Add your personal notes here...") }
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                            horizontalArrangement = Arrangement.End
+                        ) {
+                            TextButton(onClick = { 
+                                isEditingNotes = false 
+                                editedNotes = game.notes ?: ""
+                            }) {
+                                Text("Cancel")
+                            }
+                            Button(onClick = { 
+                                isEditingNotes = false
+                                viewModel.updateGame(game.copy(notes = editedNotes))
+                            }) {
+                                Text("Save")
+                            }
+                        }
+                    } else {
+                        Text(
+                            text = if (game.notes.isNullOrBlank()) "Tap to add notes..." else game.notes,
+                            style = MaterialTheme.typography.bodyLarge,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 8.dp)
+                                .clickable { 
+                                    editedNotes = game.notes ?: ""
+                                    isEditingNotes = true 
+                                },
+                            color = if (game.notes.isNullOrBlank()) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f) else MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(32.dp))
+
                     // 16. Date Added
                     val dateAddedStr = remember(game.dateAdded) {
                         SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(game.dateAdded))
@@ -580,6 +685,31 @@ fun GameDetailScreen(
                             showRatingPicker = false 
                         },
                         onDismiss = { showRatingPicker = false }
+                    )
+                }
+
+                if (showNotesSaveDialog) {
+                    AlertDialog(
+                        onDismissRequest = { showNotesSaveDialog = false },
+                        title = { Text("Unsaved Notes") },
+                        text = { Text("You have unsaved changes in your notes. Would you like to save them?") },
+                        confirmButton = {
+                            Button(onClick = {
+                                viewModel.updateGame(game.copy(notes = editedNotes))
+                                isEditingNotes = false
+                                showNotesSaveDialog = false
+                            }) {
+                                Text("Save")
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = {
+                                isEditingNotes = false
+                                showNotesSaveDialog = false
+                            }) {
+                                Text("Discard")
+                            }
+                        }
                     )
                 }
             }

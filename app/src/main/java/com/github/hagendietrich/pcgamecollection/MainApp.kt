@@ -100,6 +100,37 @@ class App : Application(), ImageLoaderFactory {
                 db.execSQL("ALTER TABLE `wishlist_games_new` RENAME TO `wishlist_games` ")
             }
         }
+
+        private val MIGRATION_22_23 = object : Migration(22, 23) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `games` ADD COLUMN `hltbMain` INTEGER")
+                db.execSQL("ALTER TABLE `games` ADD COLUMN `hltbMainExtra` INTEGER")
+                db.execSQL("ALTER TABLE `games` ADD COLUMN `hltbCompletionist` INTEGER")
+                db.execSQL("ALTER TABLE `wishlist_games` ADD COLUMN `hltbMain` INTEGER")
+                db.execSQL("ALTER TABLE `wishlist_games` ADD COLUMN `hltbMainExtra` INTEGER")
+                db.execSQL("ALTER TABLE `wishlist_games` ADD COLUMN `hltbCompletionist` INTEGER")
+            }
+        }
+
+        private val MIGRATION_23_24 = object : Migration(23, 24) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `games` ADD COLUMN `playtimeSource` TEXT")
+                db.execSQL("ALTER TABLE `wishlist_games` ADD COLUMN `playtimeSource` TEXT")
+            }
+        }
+
+        private val MIGRATION_24_25 = object : Migration(24, 25) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `games` ADD COLUMN `notes` TEXT")
+            }
+        }
+
+        private val MIGRATION_25_26 = object : Migration(25, 26) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `games` ADD COLUMN `achievements` TEXT NOT NULL DEFAULT '[]'")
+                db.execSQL("ALTER TABLE `games` ADD COLUMN `achievementsSource` TEXT")
+            }
+        }
     }
 
     lateinit var database: AppDatabase
@@ -114,7 +145,7 @@ class App : Application(), ImageLoaderFactory {
             AppDatabase::class.java,
             "digital_collection.db"
         )
-        .addMigrations(MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22) // preserve library data on upgrade to v22
+        .addMigrations(MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26) // preserve library data on upgrade to v26
         .fallbackToDestructiveMigration() // safety net for pre-15 versions
         .build()
     }

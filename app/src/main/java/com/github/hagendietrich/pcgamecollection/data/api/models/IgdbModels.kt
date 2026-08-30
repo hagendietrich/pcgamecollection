@@ -12,8 +12,8 @@ data class IgdbTokenResponse(
 
 @Serializable
 data class IgdbGame(
-    val id: Long,
-    val name: String,
+    val id: Long = 0,
+    val name: String = "",
     @SerialName("game_type") val category: Int? = null,
     @SerialName("first_release_date") val firstReleaseDate: Long? = null,
     val cover: IgdbCover? = null,
@@ -37,6 +37,18 @@ data class IgdbGame(
     val bundles: List<Long>? = null,
     @SerialName("standalone_expansions") val standaloneExpansions: List<Long>? = null
 )
+
+@Serializable
+data class IgdbGameTimeToBeat(
+    val id: Long? = null,
+    val hastily: Int = 0,
+    @SerialName("hastly") val hastly: Int = 0, // Fallback for typo
+    val normally: Int = 0,
+    val completely: Int = 0,
+    @SerialName("game_id") val gameId: Long? = null
+) {
+    val bestHastly: Int get() = if (hastily > 0) hastily else hastly
+}
 
 @Serializable
 data class IgdbCollection(

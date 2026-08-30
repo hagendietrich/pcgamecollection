@@ -1,9 +1,12 @@
 package com.github.hagendietrich.pcgamecollection.data.api
 
+import android.util.Log
 import io.ktor.client.*
 import io.ktor.client.call.*
 import io.ktor.client.plugins.contentnegotiation.*
 import io.ktor.client.request.*
+import io.ktor.client.statement.*
+import io.ktor.http.*
 import io.ktor.serialization.kotlinx.json.*
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -57,6 +60,49 @@ class SteamClient {
     data class SteamVanityResult(
         val steamid: String? = null,
         val success: Int = 0
+    )
+
+    @Serializable
+    data class SteamAchievementSchemaResponse(
+        val game: SteamGameSchema? = null
+    )
+
+    @Serializable
+    data class SteamGameSchema(
+        val availableGameStats: SteamAvailableStats? = null
+    )
+
+    @Serializable
+    data class SteamAvailableStats(
+        val achievements: List<SteamAchievementDefinition> = emptyList()
+    )
+
+    @Serializable
+    data class SteamAchievementDefinition(
+        val name: String,
+        val displayName: String? = null,
+        val description: String? = null,
+        val icon: String? = null,
+        val icongray: String? = null,
+        val hidden: Int = 0
+    )
+
+    @Serializable
+    data class SteamPlayerAchievementsResponse(
+        val playerstats: SteamPlayerStats? = null
+    )
+
+    @Serializable
+    data class SteamPlayerStats(
+        val achievements: List<SteamPlayerAchievement> = emptyList(),
+        val success: Boolean = false
+    )
+
+    @Serializable
+    data class SteamPlayerAchievement(
+        val apiname: String,
+        val achieved: Int = 0,
+        val unlocktime: Long = 0
     )
 
     suspend fun resolveVanityUrl(apiKey: String, input: String): String? {
@@ -133,6 +179,62 @@ class SteamClient {
         } catch (e: Exception) {
             println("Steam Price Error for AppID $appId: ${e.message}")
             null
+        }
+    }
+
+    suspend fun fetchAchievementSchema(apiKey: String, appId: Int): List<SteamAchievementDefinition> {
+        val url = "https://api.steampowered.com/ISteamUserStats/GetSchemaForGame/v2/"
+        Log.d("SteamClient", "Fetching achievement schema for AppID $appId from $url")
+        return try {
+            val response = client.get(url) {
+                parameter("key", apiKey)
+                parameter("appid", appId)
+            }
+            
+            if (response.status == HttpStatusCode.OK) {
+                val schemaResponse: SteamAchievementSchemaResponse = response.body()
+                val count = schemaResponse.game?.availableGameStats?.achievements?.size ?: 0
+                Log.d("SteamClient", "Steam schema response: found $count achievements")
+                schemaResponse.game?.availableGameStats?.achievements ?: emptyList()
+            } else {
+                val errorBody = response.bodyAsText()
+                Log.e("SteamClient", "Error fetching achievement schema: Status ${response.status}, Body: $errorBody")
+                emptyList()
+            }
+        } catch (e: Exception) {
+            Log.e("SteamClient", "Error fetching achievement schema: ${e.message}", e)
+            emptyList()
+        }
+    }
+
+    suspend fun fetchUserAchievements(apiKey: String, steamId: String, appId: Int): List<SteamPlayerAchievement> {
+        val url = "https://api.steampowered.com/ISteamUserStats/GetPlayerAchievements/v1/"
+        Log.d("SteamClient", "Fetching user achievements for AppID $appId, User $steamId from $url")
+        return try {
+            val response = client.get(url) {
+                parameter("key", apiKey)
+                parameter("steamid", steamId)
+                parameter("appid", appId)
+            }
+            
+            if (response.status == HttpStatusCode.OK) {
+                val playerResponse: SteamPlayerAchievementsResponse = response.body()
+                if (playerResponse.playerstats?.success == true) {
+                    val count = playerResponse.playerstats.achievements.size
+                    Log.d("SteamClient", "Steam user achievements response: success, found $count entries")
+                    playerResponse.playerstats.achievements
+                } else {
+                    Log.w("SteamClient", "Steam user achievements response: failed (success=false)")
+                    emptyList()
+                }
+            } else {
+                val errorBody = response.bodyAsText()
+                Log.e("SteamClient", "Error fetching user achievements: Status ${response.status}, Body: $errorBody")
+                emptyList()
+            }
+        } catch (e: Exception) {
+            Log.e("SteamClient", "Error fetching user achievements: ${e.message}", e)
+            emptyList()
         }
     }
 }

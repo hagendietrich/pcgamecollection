@@ -12,6 +12,7 @@ import com.github.hagendietrich.pcgamecollection.data.api.BattleNetClient
 import com.github.hagendietrich.pcgamecollection.data.api.EaClient
 import com.github.hagendietrich.pcgamecollection.data.api.EpicClient
 import com.github.hagendietrich.pcgamecollection.data.api.GogClient
+import com.github.hagendietrich.pcgamecollection.data.api.HltbClient
 import com.github.hagendietrich.pcgamecollection.data.api.IgdbClient
 import com.github.hagendietrich.pcgamecollection.data.api.SteamClient
 import com.github.hagendietrich.pcgamecollection.data.api.UbisoftClient
@@ -34,6 +35,7 @@ class MainActivity : ComponentActivity() {
         val epicClient = EpicClient()
         val ubisoftClient = UbisoftClient()
         val battleNetClient = BattleNetClient()
+        val hltbClient = HltbClient()
         
         val gameRepository = GameRepository(
             (application as App).database.gameDao(),
@@ -45,6 +47,7 @@ class MainActivity : ComponentActivity() {
             epicClient,
             ubisoftClient,
             battleNetClient,
+            hltbClient,
             settingsRepository
         )
 

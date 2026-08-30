@@ -24,7 +24,9 @@ class SettingsRepository(private val context: Context) {
         val LAST_GOG_USERNAME = stringPreferencesKey("last_gog_username")
         val LAST_EA_EMAIL = stringPreferencesKey("last_ea_email")
         val EPIC_EMAIL = stringPreferencesKey("epic_email")
+        val EPIC_ACCOUNT_ID = stringPreferencesKey("epic_account_id")
         val UBISOFT_EMAIL = stringPreferencesKey("ubisoft_email")
+        val GOG_USER_ID = stringPreferencesKey("gog_user_id")
         val EA_REMID = stringPreferencesKey("ea_remid")
         val EA_SID = stringPreferencesKey("ea_sid")
         val EA_ACCESS_TOKEN = stringPreferencesKey("ea_access_token")
@@ -117,6 +119,14 @@ class SettingsRepository(private val context: Context) {
         preferences[PreferencesKeys.EPIC_EMAIL]
     }
 
+    val epicAccountId: Flow<String?> = context.dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.EPIC_ACCOUNT_ID]
+    }
+
+    val gogUserId: Flow<String?> = context.dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.GOG_USER_ID]
+    }
+
     val ubisoftEmail: Flow<String?> = context.dataStore.data.map { preferences ->
         preferences[PreferencesKeys.UBISOFT_EMAIL]
     }
@@ -141,12 +151,21 @@ class SettingsRepository(private val context: Context) {
         return encryptedPrefs.getString("ubisoft_password", null)
     }
 
-    suspend fun saveEpicCredentials(email: String, password: String?) {
+    suspend fun saveEpicCredentials(email: String, password: String?, accountId: String? = null) {
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.EPIC_EMAIL] = email.trim()
+            if (accountId != null) {
+                preferences[PreferencesKeys.EPIC_ACCOUNT_ID] = accountId
+            }
         }
         if (password != null) {
             encryptedPrefs.edit().putString("epic_password", password.trim()).apply()
+        }
+    }
+
+    suspend fun saveGogUserId(userId: String) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.GOG_USER_ID] = userId
         }
     }
 
