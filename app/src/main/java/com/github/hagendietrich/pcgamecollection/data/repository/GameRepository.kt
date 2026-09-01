@@ -238,6 +238,7 @@ class GameRepository(
                 
                 val updatedSourceIds = existingBySourceId.sourceIds.toMutableMap()
                 updatedSourceIds["EPIC"] = record.catalogItemId
+                record.namespace?.let { updatedSourceIds["EPIC_SANDBOX_ID"] = it }
                 
                 gameDao.updateGame(existingBySourceId.copy(
                     platforms = updatedPlatforms,
@@ -261,7 +262,10 @@ class GameRepository(
                 val updatedPlatforms = existingByFuzzyTitle.platforms.toMutableList()
                 if (!isAlreadyPresent) updatedPlatforms.add("Epic")
                 
-                val updatedSourceIds = existingByFuzzyTitle.sourceIds.toMutableMap().apply { put("EPIC", record.catalogItemId) }
+                val updatedSourceIds = existingByFuzzyTitle.sourceIds.toMutableMap().apply { 
+                    put("EPIC", record.catalogItemId)
+                    record.namespace?.let { put("EPIC_SANDBOX_ID", it) }
+                }
                 
                 gameDao.updateGame(existingByFuzzyTitle.copy(platforms = updatedPlatforms, sourceIds = updatedSourceIds))
                 
@@ -284,7 +288,10 @@ class GameRepository(
                     coverImageUrl = getFullCoverUrl(fullMatch.cover?.url),
                     releaseDate = formatTimestamp(fullMatch.firstReleaseDate),
                     igdbId = fullMatch.id,
-                    sourceIds = mapOf("EPIC" to record.catalogItemId),
+                    sourceIds = mapOf(
+                        "EPIC" to record.catalogItemId,
+                        "EPIC_SANDBOX_ID" to (record.namespace ?: "")
+                    ).filterValues { it.isNotEmpty() },
                     genres = fullMatch.genres?.map { it.name } ?: emptyList(),
                     summary = fullMatch.summary,
                     screenshotUrls = fullMatch.screenshots?.map { getFullScreenshotUrl(it.url) } ?: emptyList(),
@@ -1778,19 +1785,15 @@ class GameRepository(
                 hltbData = hltbClient.getGameByGogId(gogId)
             }
             
-            // 4. Try Title Search
-            if (hltbData == null) {
-                Log.d("GameRepository", "Enrichment: Trying title search fallback: ${updatedGame.title}")
-                hltbData = hltbClient.searchGame(updatedGame.title)
-            }
-
+            // 4. Title search removed — API endpoints are non-functional; falls through to IGDB TimeToBeat
+            
             if (hltbData != null) {
                 val bestExtraHours = hltbData.getBestExtra()
                 val mainMin = hltbClient.toMinutes(hltbData.mainStory)
                 val extraMin = hltbClient.toMinutes(bestExtraHours)
                 val compMin = hltbClient.toMinutes(hltbData.completionist)
                 
-                Log.d("GameRepository", "HLTB Data for ${updatedGame.title}: Main=${hltbData.mainStory}h, BestExtra=${bestExtraHours}h, Comp=${hltbData.completionist}h [Raw: swExtras=${hltbData.mainStoryWithExtras}, pExtra=${hltbData.mainPlusExtra}, mExtra=${hltbData.mainExtra}]")
+                Log.d("GameRepository", "HLTB Data for ${updatedGame.title}: Main=${hltbData.mainStory}h, BestExtra=${bestExtraHours}h, Comp=${hltbData.completionist}h [Raw: swExtras=${hltbData.mainStoryWithExtras}]")
 
                 gameDao.updateGame(gameDao.getGameById(gameId)!!.copy(
                     hltbMain = mainMin,
@@ -2184,12 +2187,15 @@ class GameRepository(
         }
 
         // 3. Epic (Fallback 2)
+        val epicSandboxId = game.sourceIds["EPIC_SANDBOX_ID"]
         val epicSlug = game.sourceIds["EPIC"]
-        if (epicSlug != null) {
-            Log.d("GameRepository", "Achievement Fetch [Epic]: Found slug $epicSlug")
+        
+        if (epicSandboxId != null || epicSlug != null) {
+            Log.d("GameRepository", "Achievement Fetch [Epic]: Found SandboxID=$epicSandboxId, Slug=$epicSlug")
             try {
-                val sandboxId = epicClient.getSandboxIdFromSlug(epicSlug)
-                Log.d("GameRepository", "Achievement Fetch [Epic]: Resolved SandboxID: $sandboxId")
+                val sandboxId = epicSandboxId ?: epicClient.getSandboxIdFromSlug(epicSlug!!, game.title)
+                Log.d("GameRepository", "Achievement Fetch [Epic]: Using SandboxID: $sandboxId")
+                
                 if (sandboxId != null) {
                     val schema = epicClient.fetchAchievementSchema(sandboxId)
                     Log.d("GameRepository", "Achievement Fetch [Epic]: Schema results: ${schema.size}")

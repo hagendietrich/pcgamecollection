@@ -15,6 +15,10 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.*
 import android.util.Base64
 
+// Safe extensions to avoid JsonNull crash
+private val JsonElement?.safeObject: JsonObject? get() = this as? JsonObject
+private val JsonElement?.safeArray: JsonArray? get() = this as? JsonArray
+
 /** Current price of an Epic Games Store product in EUR. */
 data class EpicPriceInfo(
     val currentPrice: Double,
@@ -233,15 +237,15 @@ class EpicClient {
                 })
             }.body()
 
-            val elements = response["data"]?.jsonObject?.get("Catalog")?.jsonObject
-                ?.get("searchStore")?.jsonObject?.get("elements")?.jsonArray ?: return null
+            val elements = response["data"].safeObject?.get("Catalog").safeObject
+                ?.get("searchStore").safeObject?.get("elements").safeArray ?: return null
 
             // Find the element that matches our slug
-            val element = elements.map { it.jsonObject }.find { 
+            val element = elements.mapNotNull { it.safeObject }.find { 
                 it["productSlug"]?.jsonPrimitive?.content == productSlug 
-            } ?: elements.firstOrNull()?.jsonObject ?: return null
+            } ?: elements.firstOrNull().safeObject ?: return null
 
-            val totalPrice = element["price"]?.jsonObject?.get("totalPrice")?.jsonObject ?: return null
+            val totalPrice = element["price"].safeObject?.get("totalPrice").safeObject ?: return null
             val discountPriceCents = totalPrice["discountPrice"]?.jsonPrimitive?.intOrNull ?: 0
             val originalPriceCents = totalPrice["originalPrice"]?.jsonPrimitive?.intOrNull ?: discountPriceCents
 
@@ -259,49 +263,111 @@ class EpicClient {
         }
     }
 
-    suspend fun getSandboxIdFromSlug(productSlug: String): String? {
+    suspend fun getSandboxIdFromSlug(productSlug: String, gameTitle: String? = null): String? {
         val url = "https://store.epicgames.com/graphql"
-        Log.d("EpicClient", "Resolving SandboxID for slug $productSlug from $url")
-        val query = """
+        Log.d("EpicClient", "Resolving SandboxID for '$productSlug' (Title: $gameTitle) from $url")
+        
+        // 1. Try mapping Catalog ID -> Namespace directly if it's a hex ID
+        if (productSlug.matches(Regex("^[a-f0-9]{32}$"))) {
+            val mappingQuery = """
+                query catalogItem(${'$'}id: String!) {
+                  Catalog {
+                    catalogItem(id: ${'$'}id) {
+                      namespace
+                    }
+                  }
+                }
+            """.trimIndent()
+            
+            try {
+                val response: JsonObject = client.post(url) {
+                    contentType(ContentType.Application.Json)
+                    header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+                    setBody(buildJsonObject {
+                        put("query", mappingQuery)
+                        put("variables", buildJsonObject { put("id", productSlug) })
+                    })
+                }.body()
+                
+                val namespace = response["data"].safeObject?.get("Catalog").safeObject
+                    ?.get("catalogItem").safeObject?.get("namespace")?.jsonPrimitive?.content
+                
+                if (!namespace.isNullOrBlank()) {
+                    Log.d("EpicClient", "Resolved SandboxID from Catalog ID lookup: $namespace")
+                    return namespace
+                }
+            } catch (e: Exception) {
+                Log.w("EpicClient", "Catalog mapping lookup failed: ${e.message}")
+            }
+        }
+
+        // 2. Search store by keywords (Slug or ID)
+        val searchStoreQuery = """
             query searchStoreQuery(${'$'}keywords: String, ${'$'}country: String!) {
               Catalog {
                 searchStore(keywords: ${'$'}keywords, country: ${'$'}country) {
                   elements {
                     namespace
                     productSlug
+                    title
                   }
                 }
               }
             }
         """.trimIndent()
 
-        return try {
-            val response: JsonObject = client.post(url) {
-                contentType(ContentType.Application.Json)
-                header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-                setBody(buildJsonObject {
-                    put("query", query)
-                    put("variables", buildJsonObject {
-                        put("keywords", productSlug)
-                        put("country", "DE")
+        suspend fun performSearch(keywords: String): JsonArray? {
+            return try {
+                val response: JsonObject = client.post(url) {
+                    contentType(ContentType.Application.Json)
+                    header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+                    setBody(buildJsonObject {
+                        put("query", searchStoreQuery)
+                        put("variables", buildJsonObject {
+                            put("keywords", keywords)
+                            put("country", "DE")
+                        })
                     })
-                })
-            }.body()
-
-            val elements = response["data"]?.jsonObject?.get("Catalog")?.jsonObject
-                ?.get("searchStore")?.jsonObject?.get("elements")?.jsonArray ?: return null
-
-            val element = elements.map { it.jsonObject }.find { 
-                it["productSlug"]?.jsonPrimitive?.content == productSlug 
-            } ?: elements.firstOrNull()?.jsonObject
-
-            val sandboxId = element?.get("namespace")?.jsonPrimitive?.content
-            Log.d("EpicClient", "Resolved SandboxID: $sandboxId")
-            sandboxId
-        } catch (e: Exception) {
-            Log.e("EpicClient", "Error resolving SandboxID: ${e.message}", e)
-            null
+                }.body()
+                response["data"].safeObject?.get("Catalog").safeObject
+                    ?.get("searchStore").safeObject?.get("elements").safeArray
+            } catch (e: Exception) {
+                null
+            }
         }
+
+        var elements = performSearch(productSlug)
+        
+        // 3. Fallback: Search by Game Title if ID/Slug search failed
+        if ((elements == null || elements.isEmpty()) && !gameTitle.isNullOrBlank()) {
+            Log.d("EpicClient", "Searching by title fallback: $gameTitle")
+            elements = performSearch(gameTitle)
+        }
+
+        if (elements == null || elements.isEmpty()) {
+            Log.d("EpicClient", "No elements found in store search.")
+            return if (productSlug.matches(Regex("^[a-f0-9]{32}$"))) productSlug else null
+        }
+
+        // 4. Match search results
+        val list = elements.mapNotNull { it.safeObject }
+        
+        // Try exact slug match
+        val elementBySlug = list.find { it["productSlug"]?.jsonPrimitive?.content == productSlug }
+        
+        // Try exact namespace match (if input was a sandbox ID)
+        val elementByNamespace = list.find { it["namespace"]?.jsonPrimitive?.content == productSlug }
+        
+        // Try title match
+        val elementByTitle = gameTitle?.let { title ->
+            list.find { it["title"]?.jsonPrimitive?.content?.equals(title, ignoreCase = true) == true }
+        }
+
+        val bestElement = elementBySlug ?: elementByNamespace ?: elementByTitle ?: list.firstOrNull()
+
+        val sandboxId = bestElement?.get("namespace")?.jsonPrimitive?.content
+        Log.d("EpicClient", "Resolved SandboxID: $sandboxId")
+        return sandboxId ?: if (productSlug.matches(Regex("^[a-f0-9]{32}$"))) productSlug else null
     }
 
     suspend fun fetchAchievementSchema(sandboxId: String): List<EpicAchievementDefinition> {
@@ -340,14 +406,14 @@ class EpicClient {
                 })
             }.body()
 
-            val record = response["data"]?.jsonObject?.get("Achievement")?.jsonObject
-                ?.get("productAchievementsRecordBySandbox")?.jsonObject ?: return emptyList()
+            val record = response["data"].safeObject?.get("Achievement").safeObject
+                ?.get("productAchievementsRecordBySandbox").safeObject ?: return emptyList()
             
-            val achievementsArray = record["achievements"]?.jsonArray ?: return emptyList()
+            val achievementsArray = record["achievements"].safeArray ?: return emptyList()
             Log.d("EpicClient", "Epic schema response: found ${achievementsArray.size} achievements")
             
-            achievementsArray.map { element ->
-                val ach = element.jsonObject["achievement"]!!.jsonObject
+            achievementsArray.mapNotNull { element ->
+                val ach = element.safeObject?.get("achievement").safeObject ?: return@mapNotNull null
                 Json { ignoreUnknownKeys = true }.decodeFromJsonElement<EpicAchievementDefinition>(ach)
             }
         } catch (e: Exception) {
@@ -392,16 +458,17 @@ class EpicClient {
                 })
             }.body()
 
-            val playerAch = response["data"]?.jsonObject?.get("PlayerAchievement")?.jsonObject
-                ?.get("playerAchievementGameRecordsBySandbox")?.jsonObject ?: return emptyList()
+            val playerAch = response["data"].safeObject?.get("PlayerAchievement").safeObject
+                ?.get("playerAchievementGameRecordsBySandbox").safeObject ?: return emptyList()
             
-            val records = playerAch["records"]?.jsonArray ?: return emptyList()
-            val firstRecord = records.firstOrNull()?.jsonObject ?: return emptyList()
+            val records = playerAch["records"].safeArray ?: return emptyList()
+            val firstRecord = records.firstOrNull().safeObject ?: return emptyList()
             
-            val achievementsArray = firstRecord["achievements"]?.jsonArray ?: return emptyList()
+            val achievementsArray = firstRecord["achievements"].safeArray ?: return emptyList()
             
-            achievementsArray.map { element ->
-                Json { ignoreUnknownKeys = true }.decodeFromJsonElement<EpicPlayerAchievement>(element)
+            achievementsArray.mapNotNull { element ->
+                val ach = element.safeObject ?: return@mapNotNull null
+                Json { ignoreUnknownKeys = true }.decodeFromJsonElement<EpicPlayerAchievement>(ach)
             }
         } catch (e: Exception) {
             e.printStackTrace()
