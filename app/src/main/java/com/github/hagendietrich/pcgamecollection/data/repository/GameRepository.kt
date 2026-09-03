@@ -1183,6 +1183,7 @@ class GameRepository(
      */
     suspend fun reMatchGame(gameId: Int, newIgdbGame: IgdbGame) = withContext(Dispatchers.IO) {
         val existingGame = gameDao.getGameById(gameId) ?: return@withContext
+        Log.d("GameRepository", "Re-matching game '${existingGame.title}': New IGDB category is ${newIgdbGame.category}")
         
         val clientId = settingsRepository.clientId.firstOrNull() ?: return@withContext
         val fullIgdbGames = igdbClient.getGamesByIds(clientId, listOf(newIgdbGame.id))
@@ -1462,6 +1463,14 @@ class GameRepository(
         return wishlistGameDao.getWishlistDlcForGame(parentIgdbId)
     }
 
+    fun getGamesByBundleId(bundleId: Long): Flow<List<Game>> {
+        return gameDao.getGamesByBundleId(bundleId)
+    }
+
+    fun getWishlistGamesByBundleId(bundleId: Long): Flow<List<WishlistGame>> {
+        return wishlistGameDao.getWishlistGamesByBundleId(bundleId)
+    }
+
     /**
      * Creates a wishlist entry from an IGDB search result.
      * Collects all available store links (Steam, GOG, Epic) and fetches their current EUR prices.
@@ -1663,6 +1672,8 @@ class GameRepository(
             return@withContext
         }
 
+        Log.d("GameRepository", "Enrichment: Fetched IGDB category for '${existing.title}': ${igdbGame.category}")
+
         // Fetch ALL external game entries (store links) to see if we can find a Steam/GOG/HLTB ID we missed
         val externals = igdbClient.getExternalGamesForGame(clientId, igdbId)
         Log.d("GameRepository", "Enrichment: Scavenging ${externals.size} externals for ${existing.title} (ID: $igdbId)")
@@ -1730,7 +1741,8 @@ class GameRepository(
                 externals = externals
             ),
             parentIgdbId = parentId,
-            category = igdbGame.category
+            category = igdbGame.category,
+            bundleIgdbIds = (igdbGame.bundles ?: emptyList()).distinct()
         )
         
         gameDao.updateGame(updatedGame)
@@ -1739,19 +1751,82 @@ class GameRepository(
             Log.d("GameRepository", "Scavenged external IDs for ${updatedGame.title}: $scavengedSourceIds")
         }
 
-        // Reverse enrichment: update any existing games in the library that are listed as DLCs/Bundles of THIS game.
-        val childIds = (igdbGame.dlcs ?: emptyList()) + 
-                       (igdbGame.expansions ?: emptyList()) + 
-                       (igdbGame.bundles ?: emptyList()) + 
-                       (igdbGame.standaloneExpansions ?: emptyList())
+        // Handle children and bundle constituents
+        val isBundle = updatedGame.category == 3 || updatedGame.category == 13
+        val bundleConstituents = if (isBundle) igdbClient.getBundleConstituents(clientId, igdbId) else emptyList()
+        
+        val childIds = if (isBundle) {
+            bundleConstituents.map { it.id }
+        } else {
+            (igdbGame.dlcs ?: emptyList()) + 
+            (igdbGame.expansions ?: emptyList()) + 
+            (igdbGame.standaloneExpansions ?: emptyList())
+        }
         
         if (childIds.isNotEmpty()) {
             val localGames = gameDao.getAllGames().first()
-            localGames.filter { it.igdbId != null && childIds.contains(it.igdbId) && it.parentIgdbId == null }
+            val existingIgdbIds = localGames.mapNotNull { it.igdbId }.toSet()
+
+            // 1. Link existing games that were previously unlinked or update their bundle list
+            localGames.filter { it.igdbId != null && childIds.contains(it.igdbId) }
                 .forEach { child ->
-                    gameDao.updateGame(child.copy(parentIgdbId = igdbId))
-                    println("Enrichment: Linked child ${child.title} to parent ${latestExisting.title}")
+                    val needsUpdate = if (isBundle) {
+                        !child.bundleIgdbIds.contains(igdbId)
+                    } else {
+                        child.parentIgdbId == null
+                    }
+
+                    if (needsUpdate) {
+                        val updatedChild = if (isBundle) {
+                            child.copy(bundleIgdbIds = (child.bundleIgdbIds + igdbId).distinct())
+                        } else {
+                            child.copy(parentIgdbId = igdbId)
+                        }
+                        gameDao.updateGame(updatedChild)
+                        println("Enrichment: Linked child ${child.title} to parent/bundle ${latestExisting.title}")
+                    }
                 }
+
+            // 2. Handle bundles: Fetch constituent games that are not in the library yet
+            if (isBundle) {
+                val missingChildIds = childIds.filter { !existingIgdbIds.contains(it) }
+
+                if (missingChildIds.isNotEmpty()) {
+                    println("Enrichment: Processing ${missingChildIds.size} missing constituent games for bundle ${updatedGame.title}")
+                    
+                    bundleConstituents.filter { missingChildIds.contains(it.id) }.forEach { childIgdb ->
+                        val shadowGame = Game(
+                            title = childIgdb.name,
+                            platforms = listOf("IGDB"),
+                            coverImageUrl = getFullCoverUrl(childIgdb.cover?.url),
+                            releaseDate = normalizeDate(formatTimestamp(childIgdb.firstReleaseDate)),
+                            isOwned = false,
+                            igdbId = childIgdb.id,
+                            sourceIds = mapOf("IGDB" to childIgdb.id.toString()),
+                            genres = childIgdb.genres?.map { it.name } ?: emptyList(),
+                            summary = childIgdb.summary,
+                            screenshotUrls = childIgdb.screenshots?.map { getFullScreenshotUrl(it.url) } ?: emptyList(),
+                            igdbUrl = childIgdb.url,
+                            userRating = childIgdb.rating,
+                            criticRating = childIgdb.aggregatedRating,
+                            developers = childIgdb.involvedCompanies?.filter { it.developer }?.mapNotNull { it.company?.name } ?: emptyList(),
+                            publishers = childIgdb.involvedCompanies?.filter { it.publisher }?.mapNotNull { it.company?.name } ?: emptyList(),
+                            themes = childIgdb.themes?.map { it.name } ?: emptyList(),
+                            keywords = childIgdb.keywords?.map { it.name } ?: emptyList(),
+                            franchises = childIgdb.franchises?.map { it.name } ?: emptyList(),
+                            series = (listOfNotNull(childIgdb.collection?.name) + (childIgdb.collections?.mapNotNull { it.name } ?: emptyList())).distinct(),
+                            gameModes = mapIgdbGameModes(childIgdb.gameModes),
+                            storeUrls = extractStoreUrls(childIgdb, emptyMap()),
+                            parentIgdbId = childIgdb.parentGame, // Keep its own parent if it has one (e.g. ME1 Original)
+                            bundleIgdbIds = listOf(igdbId), // It belongs to THIS bundle
+                            category = childIgdb.category,
+                            dateAdded = System.currentTimeMillis()
+                        )
+                        gameDao.insertGame(shadowGame)
+                        println("Enrichment: Added shadow game ${shadowGame.title} for bundle ${updatedGame.title}")
+                    }
+                }
+            }
         }
 
         // HLTB / IGDB Playtime Enrichment

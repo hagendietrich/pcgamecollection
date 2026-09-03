@@ -34,4 +34,7 @@ interface WishlistGameDao {
 
     @Query("SELECT * FROM wishlist_games WHERE parentIgdbId = :parentIgdbId")
     fun getWishlistDlcForGame(parentIgdbId: Long): Flow<List<WishlistGame>>
+
+    @Query("SELECT * FROM wishlist_games WHERE bundleIgdbIds LIKE '%[' || :bundleId || ']%' OR bundleIgdbIds LIKE '%[' || :bundleId || ',%' OR bundleIgdbIds LIKE '%,' || :bundleId || ',%' OR bundleIgdbIds LIKE '%,' || :bundleId || ']%'")
+    fun getWishlistGamesByBundleId(bundleId: Long): Flow<List<WishlistGame>>
 }

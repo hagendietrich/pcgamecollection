@@ -42,7 +42,8 @@ data class WishlistGame(
     val playtimeSource: String? = null,
     val platformPrices: List<PlatformPrice> = emptyList(),
     val dateAdded: Long = System.currentTimeMillis(),
-    val notes: String? = null
+    val notes: String? = null,
+    val bundleIgdbIds: List<Long> = emptyList()
 ) {
     /** The lowest currently known price across all platforms (null if none available). */
     fun lowestPrice(): PlatformPrice? =

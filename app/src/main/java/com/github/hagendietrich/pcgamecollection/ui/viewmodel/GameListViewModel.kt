@@ -55,6 +55,9 @@ class GameListViewModel(
         }
 
         val filtered = searched.filter { game ->
+            // ONLY show owned games in the main library grid
+            if (!game.isOwned) return@filter false
+
             // Filter by Mode
             if (!passesFilter(game.gameModes, filters.modes)) return@filter false
             // Filter by Platform

@@ -27,6 +27,20 @@ class Converters {
     }
 
     @TypeConverter
+    fun fromLongList(value: List<Long>): String {
+        return Json.encodeToString(value)
+    }
+
+    @TypeConverter
+    fun toLongList(value: String): List<Long> {
+        return try {
+            Json.decodeFromString(value)
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    @TypeConverter
     fun fromMapStringString(value: Map<String, String>): String {
         return Json.encodeToString(value)
     }

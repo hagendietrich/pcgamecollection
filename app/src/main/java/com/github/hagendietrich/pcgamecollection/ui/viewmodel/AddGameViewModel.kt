@@ -76,7 +76,8 @@ class AddGameViewModel(
                 gameModes = gameRepository.mapIgdbGameModes(igdbGame.gameModes),
                 storeUrls = gameRepository.extractStoreUrls(igdbGame, mapOf("IGDB" to igdbGame.id.toString())),
                 parentIgdbId = igdbGame.parentGame,
-                category = igdbGame.category
+                category = igdbGame.category,
+                bundleIgdbIds = igdbGame.bundles ?: emptyList()
             )
             gameRepository.addGame(game)
             

@@ -292,7 +292,8 @@ fun GameDetailScreen(
 
                     
                     // DLCs / Main Game Link
-                    if (state.parentGame != null) {
+                    val isBundle = game.category == 3 || game.category == 13
+                    if (state.parentGame != null && !isBundle) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -309,7 +310,7 @@ fun GameDetailScreen(
                                 onClick = { onNavigateToGame(state.parentGame.id) }
                             )
                         }
-                    } else if (game.parentIgdbId != null) {
+                    } else if (game.parentIgdbId != null && !isBundle) {
                         // Game has a parent but it's not in the library
                         Row(
                             modifier = Modifier
@@ -331,8 +332,8 @@ fun GameDetailScreen(
                     }
 
                     if (state.dlcs.isNotEmpty() || state.wishlistDlcs.isNotEmpty()) {
-                        DlcRow(
-                            ownedDlcs = state.dlcs,
+                        RelatedRow(
+                            relatedGames = state.dlcs,
                             wishlistDlcs = state.wishlistDlcs,
                             onNavigateToGame = onNavigateToGame
                         )
@@ -998,8 +999,8 @@ fun LinksDetailRow(
 }
 
 @Composable
-fun DlcRow(
-    ownedDlcs: List<Game>,
+fun RelatedRow(
+    relatedGames: List<Game>,
     wishlistDlcs: List<com.github.hagendietrich.pcgamecollection.data.model.WishlistGame>,
     onNavigateToGame: (Int) -> Unit
 ) {
@@ -1016,13 +1017,13 @@ fun DlcRow(
             modifier = Modifier.fillMaxWidth()
         ) {
             Text(
-                text = "DLCs: ",
+                text = "Related: ",
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.Bold
             )
             
             Text(
-                text = "${ownedDlcs.size + wishlistDlcs.size} items",
+                text = "${relatedGames.size + wishlistDlcs.size} items",
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.primary
             )
@@ -1040,23 +1041,23 @@ fun DlcRow(
                 modifier = Modifier.padding(top = 8.dp, start = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                ownedDlcs.forEach { dlc ->
+                relatedGames.forEach { game ->
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { onNavigateToGame(dlc.id) }
+                            .clickable { onNavigateToGame(game.id) }
                             .padding(vertical = 2.dp)
                     ) {
                         Icon(
-                            Icons.Default.CheckCircle,
-                            contentDescription = "Owned",
-                            tint = Color(0xFF4CAF50),
+                            imageVector = if (game.isOwned) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
+                            contentDescription = if (game.isOwned) "Owned" else "Not Owned",
+                            tint = if (game.isOwned) Color(0xFF4CAF50) else Color.Gray,
                             modifier = Modifier.size(16.dp)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = dlc.title,
+                            text = game.title,
                             style = MaterialTheme.typography.bodyMedium,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis

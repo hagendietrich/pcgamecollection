@@ -44,4 +44,7 @@ interface GameDao {
 
     @Query("SELECT * FROM games WHERE parentIgdbId = :parentIgdbId")
     fun getDlcForGame(parentIgdbId: Long): Flow<List<Game>>
+
+    @Query("SELECT * FROM games WHERE bundleIgdbIds LIKE '%[' || :bundleId || ']%' OR bundleIgdbIds LIKE '%[' || :bundleId || ',%' OR bundleIgdbIds LIKE '%,' || :bundleId || ',%' OR bundleIgdbIds LIKE '%,' || :bundleId || ']%'")
+    fun getGamesByBundleId(bundleId: Long): Flow<List<Game>>
 }

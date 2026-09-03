@@ -131,6 +131,13 @@ class App : Application(), ImageLoaderFactory {
                 db.execSQL("ALTER TABLE `games` ADD COLUMN `achievementsSource` TEXT")
             }
         }
+
+        private val MIGRATION_26_27 = object : Migration(26, 27) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `games` ADD COLUMN `bundleIgdbIds` TEXT NOT NULL DEFAULT '[]'")
+                db.execSQL("ALTER TABLE `wishlist_games` ADD COLUMN `bundleIgdbIds` TEXT NOT NULL DEFAULT '[]'")
+            }
+        }
     }
 
     lateinit var database: AppDatabase
@@ -145,7 +152,7 @@ class App : Application(), ImageLoaderFactory {
             AppDatabase::class.java,
             "digital_collection.db"
         )
-        .addMigrations(MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26) // preserve library data on upgrade to v26
+        .addMigrations(MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27) // preserve library data on upgrade to v27
         .fallbackToDestructiveMigration() // safety net for pre-15 versions
         .build()
     }

@@ -66,14 +66,22 @@ class GameDetailViewModel(
                     
                     val dlcsFlow = if (igdbId != null) gameRepository.getDlcForGame(igdbId) else flowOf(emptyList())
                     val wishlistDlcsFlow = if (igdbId != null) gameRepository.getWishlistDlcForGame(igdbId) else flowOf(emptyList())
+                    
+                    val bundleContentsFlow = if (igdbId != null) gameRepository.getGamesByBundleId(igdbId) else flowOf(emptyList())
+                    val wishlistBundleContentsFlow = if (igdbId != null) gameRepository.getWishlistGamesByBundleId(igdbId) else flowOf(emptyList())
+                    
                     val parentGameFlow = if (parentIgdbId != null) gameRepository.getGameByIgdbIdFlow(parentIgdbId) else flowOf(null)
 
                     combine(
                         dlcsFlow,
                         wishlistDlcsFlow,
+                        bundleContentsFlow,
+                        wishlistBundleContentsFlow,
                         parentGameFlow
-                    ) { dlcs, wishlistDlcs, parentGame ->
-                        GameDetailUiState.Success(game, dlcs, wishlistDlcs, parentGame)
+                    ) { dlcs, wishlistDlcs, bundleContents, wishlistBundleContents, parentGame ->
+                        val combinedRelated = (dlcs + bundleContents).distinctBy { it.igdbId ?: it.id }
+                        val combinedWishlist = (wishlistDlcs + wishlistBundleContents).distinctBy { it.igdbId ?: it.id }
+                        GameDetailUiState.Success(game, combinedRelated, combinedWishlist, parentGame)
                     }
                 }
             }.collect { state ->

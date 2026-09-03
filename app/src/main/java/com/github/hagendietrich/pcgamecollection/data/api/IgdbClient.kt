@@ -107,6 +107,25 @@ class IgdbClient(
     }
 
     /**
+     * Finds the constituent games that are part of this bundle.
+     */
+    suspend fun getBundleConstituents(clientId: String, bundleId: Long): List<IgdbGame> {
+        val token = accessToken ?: return emptyList()
+        
+        return try {
+            val games: List<IgdbGame> = client.post("https://api.igdb.com/v4/games") {
+                header("Client-ID", clientId)
+                header("Authorization", "Bearer $token")
+                setBody("fields id, name, game_type, first_release_date, cover.url, genres.name, summary, screenshots.url, url, rating, aggregated_rating, involved_companies.company.name, involved_companies.developer, involved_companies.publisher, themes.name, keywords.name, external_games.url, external_games.category, external_games.uid, game_modes.name, franchises.name, collection.name, collections.name, parent_game, dlcs, expansions, bundles, standalone_expansions; where bundles = ($bundleId); limit 50;")
+            }.body()
+            games
+        } catch (e: Exception) {
+            println("IGDB GetBundleConstituents Error: ${e.message}")
+            emptyList()
+        }
+    }
+
+    /**
      * Finds the main game that contains this bundle.
      * Category 3 is Bundle in IGDB.
      */
