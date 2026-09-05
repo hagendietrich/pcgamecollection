@@ -2,6 +2,7 @@ package com.github.hagendietrich.pcgamecollection.data.repository
 
 import android.content.Context
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
@@ -30,10 +31,52 @@ class SettingsRepository(private val context: Context) {
         val EA_REMID = stringPreferencesKey("ea_remid")
         val EA_SID = stringPreferencesKey("ea_sid")
         val EA_ACCESS_TOKEN = stringPreferencesKey("ea_access_token")
-        val COLUMN_COUNT = androidx.datastore.preferences.core.intPreferencesKey("column_count")
+        val COLUMN_COUNT = intPreferencesKey("column_count")
         val SORT_ORDER = stringPreferencesKey("sort_order")
         val GROUPING_TYPE = stringPreferencesKey("grouping_type") // "NONE", "STATUS", "LABEL", "PLATFORM", "GENRE"
         val LIBRARY_FILTERS = stringPreferencesKey("library_filters")
+        val SAVED_GROUPING = stringPreferencesKey("saved_grouping")
+        val SAVED_FILTERS = stringPreferencesKey("saved_filter")
+        val SAVED_SORT_ORDER = stringPreferencesKey("saved_sort_order")
+        val SAVED_SEARCH_TERM = stringPreferencesKey("saved_search_term")
+        val SAVED_COLUMN_COUNT = intPreferencesKey("save_column_count")
+    }
+
+    suspend fun saveLibrarySnapshot(
+        searchTerm: String,
+        grouping: GroupingType,
+        filters: LibraryFilters,
+        sortOrder: SortOrder,
+        columns: Int
+    ) {
+        context.dataStore.edit { prefs ->
+            prefs[PreferencesKeys.SAVED_SEARCH_TERM] = searchTerm
+            prefs[PreferencesKeys.SAVED_GROUPING] = grouping.name
+            prefs[PreferencesKeys.SAVED_FILTERS] = Json.encodeToString(filters)
+            prefs[PreferencesKeys.SAVED_SORT_ORDER] = sortOrder.name
+            prefs[PreferencesKeys.SAVED_COLUMN_COUNT] = columns
+        }
+    }
+
+    suspend fun restoreLibrarySnapshot(): String? {
+        var savedSearchTerm: String? = null
+        context.dataStore.edit { prefs ->
+            savedSearchTerm = prefs[PreferencesKeys.SAVED_SEARCH_TERM]
+            
+            prefs[PreferencesKeys.SAVED_GROUPING]?.let { 
+                prefs[PreferencesKeys.GROUPING_TYPE] = it 
+            }
+            prefs[PreferencesKeys.SAVED_FILTERS]?.let { 
+                prefs[PreferencesKeys.LIBRARY_FILTERS] = it 
+            }
+            prefs[PreferencesKeys.SAVED_SORT_ORDER]?.let { 
+                prefs[PreferencesKeys.SORT_ORDER] = it 
+            }
+            prefs[PreferencesKeys.SAVED_COLUMN_COUNT]?.let { 
+                prefs[PreferencesKeys.COLUMN_COUNT] = it 
+            }
+        }
+        return savedSearchTerm
     }
 
     val columnCount: Flow<Int> = context.dataStore.data.map { preferences ->

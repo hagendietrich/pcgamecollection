@@ -29,6 +29,8 @@ fun AppTopBar(
     placeholderText: String = "Search...",
     showSearchToggle: Boolean = true,
     onToggleSearch: (Boolean) -> Unit = {},
+    onSaveView: (() -> Unit)? = null,
+    onLoadView: (() -> Unit)? = null,
     actions: @Composable RowScope.() -> Unit = {}
 ) {
     var showMenu by remember { mutableStateOf(false) }
@@ -118,6 +120,21 @@ fun AppTopBar(
                         onClick = {
                             showMenu = false
                             onNavigate(Screen.ImportExport.route)
+                        }
+                    )
+                    HorizontalDivider()
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.save_current_view)) },
+                        onClick = {
+                            showMenu = false
+                            onSaveView?.invoke() // Update this function to save view
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.load_view)) },
+                        onClick = {
+                            showMenu = false
+                            onLoadView?.invoke() // Update this function to load saved view
                         }
                     )
                     HorizontalDivider()

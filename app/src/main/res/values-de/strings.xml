@@ -36,6 +36,7 @@
     <string name="wishlist_refresh_prices">Preise aktualisieren</string>
     <string name="wishlist_remove_title">Von der Wunschliste entfernen?</string>
     <string name="wishlist_remove_text">\"%1$s\" wird von deiner Wunschliste entfernt.</string>
+    <string name="load_view">Lade Ansicht...</string>
     <string name="sort_title">Sortieren</string>
     <string name="sort_by_title">Titel (A-Z)</string>
     <string name="sort_by_date_asc">Veröffentlichungsdatum (Älteste)</string>
@@ -68,6 +69,9 @@
     <string name="setup_help_igdb_content">1. Gehen Sie zum Twitch Developer Portal (https://dev.twitch.tv/console).\n2. Melden Sie sich mit Ihrem Twitch-Konto an.\n3. Registrieren Sie eine neue Anwendung (z. B. \"PC Game Collection\").\n4. Setzen Sie die OAuth-Redirect-URL auf \"http://localhost\".\n5. Kategorie: \"Application Integration\".\n6. Nach der Erstellung sehen Sie Ihre Client-ID.\n7. Klicken Sie auf \"New Secret\", um Ihr Client-Secret zu generieren. **Bewahren Sie es sicher auf!**</string>
     <string name="setup_error_empty">Bitte gib sowohl die Client-ID als auch das Client-Secret ein</string>
     <string name="setup_error_invalid">Ungültige Zugangsdaten. Bitte überprüfe deine Client-ID und dein Secret.</string>
+    <string name="view_saved">Ansicht wurde gespeichert.</string>
+    <string name="view_restored">Ansicht wurde wiederhergestellt.</string>
     <string name="unlicense_text">Dies ist freie und uneingeschränkte Software, die gemeinfrei veröffentlicht wurde.\n\nJeder darf diese Software entweder in Quellcodeform oder als kompilierte Binärdatei für jeden Zweck, ob kommerziell oder nicht-kommerziell, und mit allen Mitteln kopieren, modifizieren, veröffentlichen, verwenden, kompilieren, verkaufen oder verteilen.\n\nIn Gerichtsbarkeiten, die Urheberrechtsgesetze anerkennen, widmen der oder die Autoren dieser Software alle Urheberrechtsinteressen an der Software der Gemeinfreiheit. Wir widmen diese Widmung zum Nutzen der breiten Öffentlichkeit und zum Nachteil unserer Erben und Nachfolger. Wir beabsichtigen, dass diese Widmung ein offenkundiger Akt des dauerhaften Verzichts auf alle gegenwärtigen und zukünftigen Rechte an dieser Software gemäß dem Urheberrecht ist.\n\nDIE SOFTWARE WIRD \"WIE BESEHEN\" ZUR VERFÜGUNG GESTELLT, OHNE JEGLICHE AUSDRÜCKLICHE ODER STILLSCHWEIGENDE GEWÄHRLEISTUNG, EINSCHLIESSLICH, ABER NICHT BESCHRÄNKT AUF DIE GEWÄHRLEISTUNG DER MARKTGÄNGIGKEIT, DER EIGNUNG FÜR EINEN BESTIMMTEN ZWECK UND DER NICHTVERLETZUNG VON RECHTEN DRITTER. IN KEINEM FALL SIND DIE AUTOREN FÜR ANSPRÜCHE, SCHÄDEN ODER ANDERE HAFTUNGEN HAFTBAR, SEI ES AUS EINEM VERTRAG, EINER UNERLAUBTEN HANDLUNG ODER ANDERWEITIG, DIE SICH AUS ODER IN VERBINDUNG MIT DER SOFTWARE ODER DER VERWENDUNG ODER DEM ANDERWEITIGEN UMGANG MIT DER SOFTWARE ERGEBEN.\n\nWeitere Informationen finden Sie unter &lt;https://unlicense.org&gt;</string>
     <string name="sort_by_date_added_asc">Datum hinzugefügt (Älteste)</string>
+    <string name="save_current_view">Speichere aktuelle Ansicht</string>
 </resources>

@@ -8,6 +8,7 @@ import com.github.hagendietrich.pcgamecollection.data.repository.GameRepository
 import com.github.hagendietrich.pcgamecollection.data.repository.SettingsRepository
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import com.github.hagendietrich.pcgamecollection.R
 
 class GameListViewModel(
     private val gameRepository: GameRepository,
@@ -36,10 +37,10 @@ class GameListViewModel(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
     val groupingType: StateFlow<GroupingType> = settingsRepository.groupingType
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), GroupingType.NONE)
+        .stateIn(viewModelScope, SharingStarted.Eagerly, GroupingType.NONE)
 
     val libraryFilters: StateFlow<LibraryFilters> = settingsRepository.libraryFilters
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), LibraryFilters())
+        .stateIn(viewModelScope, SharingStarted.Eagerly, LibraryFilters())
 
     val groupedGames: StateFlow<Map<String, List<Game>>> = combine(
         gameRepository.getAllGames(),
@@ -157,10 +158,10 @@ class GameListViewModel(
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
 
     val columnCount: StateFlow<Int> = settingsRepository.columnCount
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 3)
+        .stateIn(viewModelScope, SharingStarted.Eagerly, 3)
 
     val sortOrder: StateFlow<SortOrder> = settingsRepository.sortOrder
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), SortOrder.TITLE_ASC)
+        .stateIn(viewModelScope, SharingStarted.Eagerly, SortOrder.TITLE_ASC)
 
     val allLabels: StateFlow<List<String>> = gameRepository.getAllGames()
         .map { games -> games.flatMap { it.labels }.distinct().sorted() }
@@ -185,6 +186,9 @@ class GameListViewModel(
 
     private val _reMatchResults = MutableStateFlow<List<IgdbGame>>(emptyList())
     val reMatchResults: StateFlow<List<IgdbGame>> = _reMatchResults.asStateFlow()
+
+    private val _events = MutableSharedFlow<Int>()
+    val events = _events.asSharedFlow()
 
     fun searchForReMatch(query: String) {
         if (query.isBlank()) return
@@ -604,6 +608,29 @@ class GameListViewModel(
             } catch (e: Exception) {
                 e.printStackTrace()
             }
+        }
+    }
+
+    fun saveViewSnapshot() {
+        viewModelScope.launch { // launches a coroutine for IO operation
+            settingsRepository.saveLibrarySnapshot(
+                searchTerm = searchQuery.value,
+                grouping = groupingType.value,
+                filters = libraryFilters.value,
+                sortOrder = sortOrder.value,
+                columns = columnCount.value
+            )
+            _events.emit(R.string.view_saved)
+        }
+    }
+
+    fun restoreViewSnapshot() {
+        viewModelScope.launch {
+            val savedSearchTerm = settingsRepository.restoreLibrarySnapshot()
+            if (savedSearchTerm != null) {
+                _searchQuery.value = savedSearchTerm
+            }
+            _events.emit(R.string.view_restored)
         }
     }
 }

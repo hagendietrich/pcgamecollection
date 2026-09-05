@@ -265,7 +265,7 @@ class GogClient {
     }
 
     suspend fun fetchAchievementSchema(productId: String): List<GogAchievementSchema> {
-        val url = "https://api.gog.com/products/$productId"
+        val url = "https://api.gog.com/products/$productId?expand=achievements"
         Log.d("GogClient", "Fetching achievement metadata for Product $productId from $url")
         return try {
             val response = client.get(url)
@@ -288,7 +288,7 @@ class GogClient {
                 }
             }
             Log.d("GogClient", "Product API did not contain achievements list, status: ${response.status}")
-            emptyList()
+            emptyList<GogAchievementSchema>()
         } catch (e: Exception) {
             Log.e("GogClient", "Error fetching GOG achievement schema: ${e.message}")
             emptyList()
@@ -434,8 +434,14 @@ class GogClient {
                     fun findAchievements(element: JsonElement?): JsonArray? {
                         if (element == null) return null
                         if (element is JsonObject) {
-                            element["achievements"]?.jsonArray?.let { return it }
+                            // Prefer keys that are likely to contain the actual list
+                            element["achievements"]?.jsonArray?.let { if (it.isNotEmpty()) return it }
+                            element["achievementList"]?.jsonArray?.let { if (it.isNotEmpty()) return it }
+                            element["playerAchievements"]?.jsonArray?.let { if (it.isNotEmpty()) return it }
+                            
                             for (k in element.keys) {
+                                // Skip common large objects that don't contain achievements to avoid infinite loops
+                                if (k == "translations" || k == "images") continue
                                 findAchievements(element[k])?.let { return it }
                             }
                         } else if (element is JsonArray) {

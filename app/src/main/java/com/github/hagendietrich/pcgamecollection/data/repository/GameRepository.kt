@@ -1709,6 +1709,20 @@ class GameRepository(
             }
         }
 
+        // Fallback: If no GOG ID found in IGDB, try direct GOG search by title
+        if (scavengedSourceIds["GOG"] == null && existing.sourceIds["GOG"] == null) {
+            try {
+                val gogResults = gogClient.searchProduct(existing.title)
+                val bestMatch = gogResults.find { fuzzyTitleMatch(it.title, existing.title) }
+                if (bestMatch != null) {
+                    scavengedSourceIds["GOG"] = bestMatch.productId
+                    Log.d("GameRepository", "Enrichment [GOG Search]: Scavenged ID ${bestMatch.productId} for '${bestMatch.title}'")
+                }
+            } catch (e: Exception) {
+                Log.w("GameRepository", "Enrichment [GOG Search]: Failed for '${existing.title}': ${e.message}")
+            }
+        }
+
         // Handle bundles that don't have a parent_game link but are linked from a main game via 'bundles' list.
         var parentId = igdbGame.parentGame
         if (parentId == null && igdbGame.category == 3) { // 3 = Bundle
@@ -1763,6 +1777,11 @@ class GameRepository(
             (igdbGame.standaloneExpansions ?: emptyList())
         }
         
+        // Ownership Inheritance: Constituents of an owned bundle/parent inherit its store platforms
+        val parentStorePlatforms = updatedGame.platforms.filter { 
+            it != "IGDB" && it != "IGDB.com" && it != "Shadow" 
+        }
+
         if (childIds.isNotEmpty()) {
             val localGames = gameDao.getAllGames().first()
             val existingIgdbIds = localGames.mapNotNull { it.igdbId }.toSet()
@@ -1775,15 +1794,23 @@ class GameRepository(
                     } else {
                         child.parentIgdbId == null
                     }
+                    
+                    val childNeedsPlatform = parentStorePlatforms.any { it !in child.platforms }
 
-                    if (needsUpdate) {
+                    if (needsUpdate || childNeedsPlatform) {
                         val updatedChild = if (isBundle) {
-                            child.copy(bundleIgdbIds = (child.bundleIgdbIds + igdbId).distinct())
+                            child.copy(
+                                bundleIgdbIds = (child.bundleIgdbIds + igdbId).distinct(),
+                                platforms = (child.platforms + parentStorePlatforms).distinct()
+                            )
                         } else {
-                            child.copy(parentIgdbId = igdbId)
+                            child.copy(
+                                parentIgdbId = igdbId,
+                                platforms = (child.platforms + parentStorePlatforms).distinct()
+                            )
                         }
                         gameDao.updateGame(updatedChild)
-                        println("Enrichment: Linked child ${child.title} to parent/bundle ${latestExisting.title}")
+                        println("Enrichment: Linked child ${child.title} to parent/bundle ${latestExisting.title} (Inherited Platforms: $parentStorePlatforms)")
                     }
                 }
 
@@ -1797,10 +1824,10 @@ class GameRepository(
                     bundleConstituents.filter { missingChildIds.contains(it.id) }.forEach { childIgdb ->
                         val shadowGame = Game(
                             title = childIgdb.name,
-                            platforms = listOf("IGDB"),
+                            platforms = (listOf("IGDB") + parentStorePlatforms).distinct(),
                             coverImageUrl = getFullCoverUrl(childIgdb.cover?.url),
                             releaseDate = normalizeDate(formatTimestamp(childIgdb.firstReleaseDate)),
-                            isOwned = false,
+                            isOwned = false, // Do not show bundle constituents in the main library grid by default
                             igdbId = childIgdb.id,
                             sourceIds = mapOf("IGDB" to childIgdb.id.toString()),
                             genres = childIgdb.genres?.map { it.name } ?: emptyList(),

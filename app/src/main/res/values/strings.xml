@@ -36,6 +36,8 @@
     <string name="wishlist_refresh_prices">Refresh Prices</string>
     <string name="wishlist_remove_title">Remove from Wishlist?</string>
     <string name="wishlist_remove_text">\"%1$s\" will be removed from your wishlist.</string>
+    <string name="save_current_view">Save current view</string>
+    <string name="load_view">Load view…</string>
     <string name="sort_title">Sort</string>
     <string name="sort_by_title">Title (A-Z)</string>
     <string name="sort_by_date_asc">Release Date (Oldest)</string>
@@ -69,5 +71,7 @@
     <string name="setup_help_igdb_content">1. Go to the Twitch Developer Portal (https://dev.twitch.tv/console).\n2. Log in with your Twitch account.\n3. Register a new application (e.g., \"PC Game Collection\").\n4. Set the OAuth Redirect URL to \"http://localhost\".\n5. Category: \"Application Integration\".\n6. Once created, you will see your Client ID.\n7. Click \"New Secret\" to generate your Client Secret. **Keep it safe!**</string>
     <string name="setup_error_empty">Please enter both Client ID and Client Secret</string>
     <string name="setup_error_invalid">Invalid credentials. Please check your Client ID and Secret.</string>
+    <string name="view_saved">"View has been saved."</string>
+    <string name="view_restored">"View has been restored."</string>
     <string name="unlicense_text">This is free and unencumbered software released into the public domain.\n\nAnyone is free to copy, modify, publish, use, compile, sell, or distribute this software, either in source code form or as a compiled binary, for any purpose, commercial or non-commercial, and by any means.\n\nIn jurisdictions that recognize copyright laws, the author or authors of this software dedicate any and all copyright interest in the software to the public domain. We make this dedication for the benefit of the public at large and to the detriment of our heirs and successors. We intend this dedication to be an overt act of relinquishment in perpetuity of all present and future rights to this software under copyright law.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.\n\nFor more information, please refer to &lt;https://unlicense.org&gt;</string>
 </resources>

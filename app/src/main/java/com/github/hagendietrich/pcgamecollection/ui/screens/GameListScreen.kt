@@ -23,6 +23,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
@@ -58,6 +59,7 @@ fun GameListScreen(
     val allGenres by viewModel.allGenres.collectAsState()
     
     val collapsedGroups by viewModel.collapsedGroups.collectAsState()
+    val resources = LocalContext.current.resources
     val gridState = androidx.compose.foundation.lazy.grid.rememberLazyGridState(
         initialFirstVisibleItemIndex = viewModel.scrollIndex,
         initialFirstVisibleItemScrollOffset = viewModel.scrollOffset
@@ -70,13 +72,22 @@ fun GameListScreen(
             gridState.firstVisibleItemScrollOffset
         )
     }
-    
+
+    val snackbarHostState = remember { SnackbarHostState() }
+    LaunchedEffect(Unit) {
+        viewModel.events.collect { stringResId ->
+            val message = resources.getString(stringResId)
+            snackbarHostState.showSnackbar(message)
+        }
+    }
+
     var showSortMenu by remember { mutableStateOf(false) }
     var showGroupingMenu by remember { mutableStateOf(false) }
     var showFilterMenu by remember { mutableStateOf(false) }
     var filterCategoryToEdit by remember { mutableStateOf<String?>(null) }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             if (isMultiSelectMode) {
                 MultiSelectTopBar(
@@ -92,6 +103,8 @@ fun GameListScreen(
                 AppTopBar(
                     title = stringResource(R.string.library_title),
                     onNavigate = onNavigate,
+                    onSaveView = { viewModel.saveViewSnapshot() },
+                    onLoadView = { viewModel.restoreViewSnapshot() },
                     isSearchActive = true,
                     searchQuery = searchQuery,
                     onSearchQueryChange = { viewModel.updateSearchQuery(it) },
