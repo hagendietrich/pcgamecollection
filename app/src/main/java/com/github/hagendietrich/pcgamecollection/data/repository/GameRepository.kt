@@ -54,6 +54,7 @@ class GameRepository(
     private val ubisoftClient: UbisoftClient,
     private val battleNetClient: BattleNetClient,
     private val hltbClient: HltbClient,
+    private val trueAchievementsClient: com.github.hagendietrich.pcgamecollection.data.api.TrueAchievementsClient,
     private val settingsRepository: SettingsRepository
 ) {
 
@@ -2327,7 +2328,88 @@ class GameRepository(
         } else {
             Log.d("GameRepository", "Achievement Fetch [Epic]: No Epic slug found.")
         }
+
+        // 4. TrueAchievements (General Fallback)
+        Log.d("GameRepository", "Achievement Fetch [TA]: Attempting automatic fallback for '${game.title}'")
+        try {
+            val url = trueAchievementsClient.searchGameUrl(game.title)
+            if (url != null) {
+                var achievements = trueAchievementsClient.fetchAchievements(url)
+                
+                // HYBRID FALLBACK: If we have Steam metadata available, use high-quality Steam icons
+                val steamApiKey = settingsRepository.steamApiKey.firstOrNull()
+                val steamAppId = game.sourceIds["STEAM"]?.toIntOrNull()
+                
+                if (achievements.isNotEmpty() && !steamApiKey.isNullOrBlank() && steamAppId != null) {
+                    Log.d("GameRepository", "Achievement Fetch [TA-Hybrid]: Enrichment starting for '${game.title}'")
+                    try {
+                        val steamSchema = steamClient.fetchAchievementSchema(steamApiKey, steamAppId)
+                        if (steamSchema.isNotEmpty()) {
+                            achievements = achievements.map { taAch ->
+                                // Try to match by display name
+                                val steamDef = steamSchema.find { it.displayName?.trim()?.equals(taAch.name.trim(), ignoreCase = true) == true }
+                                if (steamDef != null && !steamDef.icon.isNullOrBlank()) {
+                                    taAch.copy(iconUrl = steamDef.icon)
+                                } else taAch
+                            }
+                            Log.d("GameRepository", "Achievement Fetch [TA-Hybrid]: Replaced icons with Steam versions where possible")
+                        }
+                    } catch (e: Exception) {
+                        Log.e("GameRepository", "Achievement Fetch [TA-Hybrid]: Steam enrichment failed: ${e.message}")
+                    }
+                }
+
+                if (achievements.isNotEmpty()) {
+                    gameDao.updateGame(game.copy(
+                        achievements = achievements,
+                        achievementsSource = "TrueAchievements"
+                    ))
+                    Log.i("GameRepository", "Achievement Fetch [TA]: Successfully saved ${achievements.size} achievements")
+                    return@withContext
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("GameRepository", "Achievement Fetch [TA]: Error: ${e.message}")
+        }
         
         Log.d("GameRepository", "Achievement Fetch: Finished with no results for '${game.title}'")
+    }
+
+    suspend fun toggleAchievement(gameId: Int, achievementName: String, isUnlocked: Boolean) = withContext(Dispatchers.IO) {
+        val game = gameDao.getGameById(gameId) ?: return@withContext
+        val updatedAchievements = game.achievements.map { 
+            if (it.name == achievementName) {
+                it.copy(
+                    isUnlocked = isUnlocked,
+                    unlockTime = if (isUnlocked) System.currentTimeMillis() else null
+                )
+            } else it
+        }
+        
+        gameDao.updateGame(game.copy(
+            achievements = updatedAchievements,
+            achievementsSource = if (game.achievementsSource == null || game.achievementsSource == "NONE") "Manual" else game.achievementsSource
+        ))
+    }
+
+    suspend fun fetchTrueAchievementsForGame(gameId: Int) = withContext(Dispatchers.IO) {
+        val game = gameDao.getGameById(gameId) ?: return@withContext
+        Log.d("GameRepository", "Achievement Fetch [TA]: Starting for '${game.title}'")
+        
+        try {
+            val url = trueAchievementsClient.searchGameUrl(game.title)
+            if (url != null) {
+                val achievements = trueAchievementsClient.fetchAchievements(url)
+                if (achievements.isNotEmpty()) {
+                    gameDao.updateGame(game.copy(
+                        achievements = achievements,
+                        achievementsSource = "TrueAchievements"
+                    ))
+                    Log.i("GameRepository", "Achievement Fetch [TA]: Successfully saved ${achievements.size} achievements")
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("GameRepository", "Achievement Fetch [TA]: Error: ${e.message}")
+        }
     }
 }

@@ -241,7 +241,13 @@ fun GameDetailScreen(
                     // Achievement Section
                     AchievementSection(
                         achievements = game.achievements,
-                        source = game.achievementsSource
+                        source = game.achievementsSource,
+                        onToggleAchievement = { name, isUnlocked ->
+                            viewModel.toggleAchievement(name, isUnlocked)
+                        },
+                        onFetchFromTrueAchievements = {
+                            viewModel.fetchTrueAchievements()
+                        }
                     )
                     
                     // 6. Labels

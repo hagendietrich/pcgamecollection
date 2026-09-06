@@ -33,9 +33,20 @@ import com.github.hagendietrich.pcgamecollection.data.model.Achievement
 fun AchievementSection(
     achievements: List<Achievement>,
     source: String?,
+    onToggleAchievement: (String, Boolean) -> Unit = { _, _ -> },
+    onFetchFromTrueAchievements: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    if (achievements.isEmpty()) return
+    if (achievements.isEmpty()) {
+        OutlinedButton(
+            onClick = onFetchFromTrueAchievements,
+            modifier = modifier.fillMaxWidth().padding(vertical = 8.dp),
+            shape = RoundedCornerShape(8.dp)
+        ) {
+            Text("Fetch Achievements (TrueAchievements)")
+        }
+        return
+    }
 
     val unlockedCount = achievements.count { it.isUnlocked }
     val totalCount = achievements.size
@@ -87,8 +98,17 @@ fun AchievementSection(
                 sortedAchievements.forEach { achievement ->
                     AchievementListItem(
                         achievement = achievement,
-                        onClick = { selectedAchievement = achievement }
+                        onClick = { selectedAchievement = achievement },
+                        onToggle = { isUnlocked -> onToggleAchievement(achievement.name, isUnlocked) }
                     )
+                }
+                
+                // Also add an option to re-fetch or fetch from another source
+                TextButton(
+                    onClick = onFetchFromTrueAchievements,
+                    modifier = Modifier.align(Alignment.CenterHorizontally)
+                ) {
+                    Text("Re-fetch from TrueAchievements")
                 }
             }
         }
@@ -97,6 +117,10 @@ fun AchievementSection(
     if (selectedAchievement != null) {
         AchievementDetailDialog(
             achievement = selectedAchievement!!,
+            onToggle = { isUnlocked -> 
+                onToggleAchievement(selectedAchievement!!.name, isUnlocked)
+                selectedAchievement = selectedAchievement?.copy(isUnlocked = isUnlocked)
+            },
             onDismiss = { selectedAchievement = null }
         )
     }
@@ -105,7 +129,8 @@ fun AchievementSection(
 @Composable
 fun AchievementListItem(
     achievement: Achievement,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onToggle: (Boolean) -> Unit
 ) {
     Row(
         modifier = Modifier
@@ -123,7 +148,7 @@ fun AchievementListItem(
         
         Spacer(modifier = Modifier.width(12.dp))
         
-        Column {
+        Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = if (achievement.isHidden && !achievement.isUnlocked) "Hidden Achievement" else achievement.name,
                 style = MaterialTheme.typography.bodyLarge,
@@ -141,6 +166,12 @@ fun AchievementListItem(
                 )
             }
         }
+
+        Checkbox(
+            checked = achievement.isUnlocked,
+            onCheckedChange = onToggle,
+            modifier = Modifier.size(24.dp)
+        )
     }
 }
 
@@ -151,6 +182,21 @@ fun AchievementIcon(
     size: androidx.compose.ui.unit.Dp = 56.dp
 ) {
     val grayscaleMatrix = ColorMatrix().apply { setToSaturation(0f) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    
+    // Create an ImageRequest with browser-like headers for TrueAchievements
+    val imageRequest = remember(achievement.iconUrl) {
+        val builder = coil.request.ImageRequest.Builder(context)
+            .data(achievement.iconUrl)
+            .crossfade(true)
+        
+        if (achievement.iconUrl?.contains("trueachievements.com") == true) {
+            builder.addHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+            builder.addHeader("Referer", "https://www.trueachievements.com/")
+        }
+        
+        builder.build()
+    }
     
     Box(
         modifier = Modifier
@@ -166,7 +212,7 @@ fun AchievementIcon(
         contentAlignment = Alignment.Center
     ) {
         AsyncImage(
-            model = achievement.iconUrl,
+            model = imageRequest,
             contentDescription = achievement.name,
             modifier = Modifier.fillMaxSize(),
             contentScale = ContentScale.Crop,
@@ -190,6 +236,7 @@ fun AchievementIcon(
 @Composable
 fun AchievementDetailDialog(
     achievement: Achievement,
+    onToggle: (Boolean) -> Unit,
     onDismiss: () -> Unit
 ) {
     AlertDialog(
@@ -197,6 +244,11 @@ fun AchievementDetailDialog(
         confirmButton = {
             TextButton(onClick = onDismiss) {
                 Text("Close")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = { onToggle(!achievement.isUnlocked) }) {
+                Text(if (achievement.isUnlocked) "Mark Locked" else "Mark Unlocked")
             }
         },
         title = {
@@ -218,7 +270,6 @@ fun AchievementDetailDialog(
                 )
                 if (achievement.isUnlocked && achievement.unlockTime != null) {
                     Spacer(modifier = Modifier.height(8.dp))
-                    // Format timestamp if possible
                     Text(
                         text = "Unlocked!",
                         style = MaterialTheme.typography.labelSmall,

@@ -36,6 +36,7 @@ class MainActivity : ComponentActivity() {
         val ubisoftClient = UbisoftClient()
         val battleNetClient = BattleNetClient()
         val hltbClient = HltbClient()
+        val trueAchievementsClient = com.github.hagendietrich.pcgamecollection.data.api.TrueAchievementsClient()
         
         val gameRepository = GameRepository(
             (application as App).database.gameDao(),
@@ -48,6 +49,7 @@ class MainActivity : ComponentActivity() {
             ubisoftClient,
             battleNetClient,
             hltbClient,
+            trueAchievementsClient,
             settingsRepository
         )
 

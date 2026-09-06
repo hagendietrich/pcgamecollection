@@ -340,6 +340,18 @@ class GameDetailViewModel(
             }
         }
     }
+
+    fun toggleAchievement(achievementName: String, isUnlocked: Boolean) {
+        viewModelScope.launch {
+            gameRepository.toggleAchievement(gameId, achievementName, isUnlocked)
+        }
+    }
+
+    fun fetchTrueAchievements() {
+        viewModelScope.launch {
+            gameRepository.fetchTrueAchievementsForGame(gameId)
+        }
+    }
 }
 
 sealed class GameDetailUiState {
