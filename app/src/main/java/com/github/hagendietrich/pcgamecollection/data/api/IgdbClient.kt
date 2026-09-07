@@ -61,6 +61,30 @@ class IgdbClient(
         }
     }
 
+    suspend fun getAnticipatedGames(clientId: String, limit: Int = 50): List<IgdbGame> {
+        val token = accessToken ?: return emptyList()
+        val now = System.currentTimeMillis() / 1000
+
+        return try {
+            val response = client.post("https://api.igdb.com/v4/games") {
+                header("Client-ID", clientId)
+                header("Authorization", "Bearer $token")
+                setBody("fields id, name, game_type, first_release_date, cover.url, genres.name, summary, screenshots.url, url, rating, aggregated_rating, involved_companies.company.name, involved_companies.developer, involved_companies.publisher, themes.name, keywords.name, external_games.url, external_games.category, external_games.uid, game_modes.name, franchises.name, collection.name, collections.name, parent_game, dlcs, expansions, bundles, standalone_expansions, hypes; where hypes != n & first_release_date > $now; sort hypes desc; limit $limit;")
+            }
+            val bodyString = response.body<String>()
+
+            if (response.status != HttpStatusCode.OK) {
+                Log.e("IgdbClient", "IGDB Anticipated Error Status: ${response.status} - Body: $bodyString")
+                return emptyList()
+            }
+
+            Json { ignoreUnknownKeys = true; coerceInputValues = true }.decodeFromString<List<IgdbGame>>(bodyString)
+        } catch (e: Exception) {
+            Log.e("IgdbClient", "IGDB Anticipated Error: ${e.message}")
+            emptyList()
+        }
+    }
+
     suspend fun resolveExternalGames(clientId: String, category: Int, uids: List<String>): List<IgdbExternalGame> {
         val token = accessToken ?: return emptyList()
         if (uids.isEmpty()) return emptyList()

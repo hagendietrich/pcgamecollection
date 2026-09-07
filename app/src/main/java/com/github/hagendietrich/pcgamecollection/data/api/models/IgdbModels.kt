@@ -35,7 +35,8 @@ data class IgdbGame(
     val dlcs: List<Long>? = null,
     val expansions: List<Long>? = null,
     val bundles: List<Long>? = null,
-    @SerialName("standalone_expansions") val standaloneExpansions: List<Long>? = null
+    @SerialName("standalone_expansions") val standaloneExpansions: List<Long>? = null,
+    val hypes: Int? = null
 )
 
 @Serializable

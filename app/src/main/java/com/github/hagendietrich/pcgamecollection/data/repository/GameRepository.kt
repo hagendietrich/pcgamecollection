@@ -454,6 +454,16 @@ class GameRepository(
         return igdbClient.searchGames(clientId, query)
     }
 
+    suspend fun getTopAnticipatedGames(limit: Int = 50): List<IgdbGame> {
+        val clientId = settingsRepository.clientId.firstOrNull() ?: return emptyList()
+        val clientSecret = settingsRepository.clientSecret.firstOrNull() ?: return emptyList()
+
+        val authSuccess = igdbClient.authenticate(clientId, clientSecret)
+        if (!authSuccess) return emptyList()
+
+        return igdbClient.getAnticipatedGames(clientId, limit)
+    }
+
     /**
      * Syncs games from a public Steam profile using Web API.
      */
@@ -1570,16 +1580,9 @@ class GameRepository(
         if (gogProductId == null && gogStoreUrl.isBlank()) {
             val candidates = gogClient.searchProduct(igdbGame.name)
             if (candidates.isNotEmpty()) {
-                fun normalize(s: String) = s.lowercase().filter { it.isLetterOrDigit() }
-                val target = normalize(igdbGame.name)
-                val best = candidates.find { normalize(it.slug) == target }
-                    ?: candidates.find { val s = normalize(it.slug); s.contains(target) || target.contains(s) }
-                    ?: candidates.find { candidate ->
-                        // Fallback: Check if title and target share a significant word (>= 4 chars)
-                        val candidateWords = normalize(candidate.title).windowed(4, 1)
-                        val targetWords = target.windowed(4, 1)
-                        candidateWords.any { it in targetWords }
-                    }
+                // Use strict fuzzy matching to avoid false positives (e.g. "Exodus" -> "Metro Exodus")
+                val best = candidates.find { fuzzyTitleMatch(igdbGame.name, it.title) || fuzzyTitleMatch(igdbGame.name, it.slug) }
+                
                 if (best != null) {
                     gogProductId = best.productId
                     gogStoreUrl = "https://www.gog.com/en/game/${best.slug}"
@@ -1974,9 +1977,9 @@ class GameRepository(
                 .replace("©", "")
                 .replace("&", "and")
             
-            // Apply Roman Numeral replacements in specific order
+            // Apply Roman Numeral replacements using word boundaries to avoid replacing inside words
             romanToNumeric.forEach { (roman, numeric) ->
-                res = res.replace(roman, numeric)
+                res = res.replace(Regex("\\b$roman\\b"), numeric)
             }
             
             return res.replace(Regex("[^a-z0-9]"), "")

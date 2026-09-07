@@ -25,6 +25,7 @@
     <string name="add_game_idle">Search for a game to add it to your collection.</string>
     <string name="add_game_empty">No games found.</string>
     <string name="add_game_success">Added %1$s to library</string>
+    <string name="anticipated_games_header">Top Anticipated Games</string>
     <string name="wishlist_title">Wishlist</string>
     <string name="wishlist_empty">Your wishlist is empty. Tap + to add games!</string>
     <string name="wishlist_add_success">%1$s added to wishlist</string>

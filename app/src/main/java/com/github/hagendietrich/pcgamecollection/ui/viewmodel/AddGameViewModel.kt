@@ -20,12 +20,57 @@ class AddGameViewModel(
     private val _addedGameIds = MutableStateFlow<Set<Long>>(emptySet())
     val addedGameIds: StateFlow<Set<Long>> = _addedGameIds.asStateFlow()
 
+    private val _wishlistGameIds = MutableStateFlow<Set<Long>>(emptySet())
+    val wishlistGameIds: StateFlow<Set<Long>> = _wishlistGameIds.asStateFlow()
+
     private val _snackbarMessage = MutableStateFlow<String?>(null)
     /** Stores only the game name for success messages to allow UI translation */
     val snackbarMessage: StateFlow<String?> = _snackbarMessage.asStateFlow()
 
+    private val _selectedGameForDetail = MutableStateFlow<IgdbGame?>(null)
+    val selectedGameForDetail: StateFlow<IgdbGame?> = _selectedGameForDetail.asStateFlow()
+
+    init {
+        fetchAnticipatedGames()
+    }
+
+    fun fetchAnticipatedGames() {
+        viewModelScope.launch {
+            _uiState.value = AddGameUiState.Loading
+            try {
+                val results = gameRepository.getTopAnticipatedGames()
+                if (results.isEmpty()) {
+                    _uiState.value = AddGameUiState.Idle
+                } else {
+                    updateTrackedGameIds(results)
+                    _uiState.value = AddGameUiState.AnticipatedResults(results)
+                }
+            } catch (e: Exception) {
+                _uiState.value = AddGameUiState.Error("Failed to fetch anticipated games: ${e.message}")
+            }
+        }
+    }
+
+    private suspend fun updateTrackedGameIds(games: List<IgdbGame>) {
+        val existingIds = mutableSetOf<Long>()
+        val wishlistIds = mutableSetOf<Long>()
+        games.forEach { igdbGame ->
+            if (gameRepository.getGameByIgdbId(igdbGame.id) != null) {
+                existingIds.add(igdbGame.id)
+            }
+            if (gameRepository.getWishlistGameByIgdbId(igdbGame.id) != null) {
+                wishlistIds.add(igdbGame.id)
+            }
+        }
+        _addedGameIds.value = existingIds
+        _wishlistGameIds.value = wishlistIds
+    }
+
     fun searchGames(query: String) {
-        if (query.isBlank()) return
+        if (query.isBlank()) {
+            fetchAnticipatedGames()
+            return
+        }
 
         viewModelScope.launch {
             _uiState.value = AddGameUiState.Loading
@@ -34,21 +79,17 @@ class AddGameViewModel(
                 if (results.isEmpty()) {
                     _uiState.value = AddGameUiState.Empty
                 } else {
-                    // Check which games are already in the library using IGDB ID
-                    val existingIds = mutableSetOf<Long>()
-                    results.forEach { igdbGame ->
-                        val existing = gameRepository.getGameByIgdbId(igdbGame.id)
-                        if (existing != null) {
-                            existingIds.add(igdbGame.id)
-                        }
-                    }
-                    _addedGameIds.value = existingIds
+                    updateTrackedGameIds(results)
                     _uiState.value = AddGameUiState.Results(results)
                 }
             } catch (e: Exception) {
                 _uiState.value = AddGameUiState.Error("Search failed: ${e.message}")
             }
         }
+    }
+
+    fun selectGameForDetail(game: IgdbGame?) {
+        _selectedGameForDetail.value = game
     }
 
     fun addGame(igdbGame: IgdbGame) {
@@ -87,6 +128,16 @@ class AddGameViewModel(
         }
     }
 
+    fun addToWishlist(igdbGame: IgdbGame) {
+        viewModelScope.launch {
+            val wishlistGame = gameRepository.createWishlistEntryFromIgdb(igdbGame)
+            gameRepository.addWishlistGame(wishlistGame)
+            
+            _wishlistGameIds.value += igdbGame.id
+            _snackbarMessage.value = igdbGame.name
+        }
+    }
+
     fun clearSnackbar() {
         _snackbarMessage.value = null
     }
@@ -97,5 +148,6 @@ sealed class AddGameUiState {
     object Loading : AddGameUiState()
     object Empty : AddGameUiState()
     data class Results(val games: List<IgdbGame>) : AddGameUiState()
+    data class AnticipatedResults(val games: List<IgdbGame>) : AddGameUiState()
     data class Error(val message: String) : AddGameUiState()
 }

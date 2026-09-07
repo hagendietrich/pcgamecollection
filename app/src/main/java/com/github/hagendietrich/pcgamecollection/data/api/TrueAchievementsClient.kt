@@ -84,12 +84,22 @@ class TrueAchievementsClient {
                 when {
                     cleanSlug == cleanTitle -> 0
                     cleanSlug.startsWith(cleanTitle) -> 1
+                    cleanTitle.startsWith(cleanSlug) -> 5 // Base game match for DLC/sub-title
                     cleanSlug.contains(cleanTitle) -> 2
-                    else -> 10 + cleanSlug.length
+                    cleanTitle.contains(cleanSlug) -> 6
+                    else -> 10 + Math.abs(cleanSlug.length - cleanTitle.length)
                 }
             }
 
             if (bestSlug != null) {
+                val cleanSlug = bestSlug.lowercase().replace(Regex("[^a-z0-9]"), "")
+                // If it's a prefix match but title is much longer, it's likely a DLC/Bundle mismatch
+                // e.g. "Cyberpunk 2077: Phantom Liberty" vs "Cyberpunk 2077"
+                if (cleanTitle.startsWith(cleanSlug) && cleanTitle.length > cleanSlug.length + 5) {
+                    Log.w("TrueAchievementsClient", "Rejecting match '$bestSlug' for '$title' (Likely base game mismatch for DLC/Bundle)")
+                    return null
+                }
+                
                 "https://www.trueachievements.com/game/$bestSlug/achievements"
             } else null
         } catch (e: Exception) {
@@ -127,15 +137,19 @@ class TrueAchievementsClient {
                 else internalIdMap[it.groupValues[4]] = it.groupValues[3]
             }
 
-            // Broad regex for achievement containers
-            val rowRegex = Regex("<li[^>]*?(?:id=\"[^\"]*?\\d+[^\"]*?\"|class=\"[^\"]*?ach[^\"]*?\")[^>]*?>(.*?)</li>", RegexOption.DOT_MATCHES_ALL)
+            // Isolate main content to avoid sidebar site-wide achievements/badges
+            val mainContent = Regex("<div[^>]*?id=\"col-main\"[^>]*?>(.*?)</div>", RegexOption.DOT_MATCHES_ALL).find(response)?.groupValues?.get(1) ?: response
+
+            // Broad regex for achievement containers, but ensure they contain a link to an achievement (/a\d+)
+            // to filter out site-wide badges or news items.
+            val rowRegex = Regex("<li[^>]*?(?:id=\"[^\"]*?\\d+[^\"]*?\"|class=\"[^\"]*?ach[^\"]*?\")[^>]*?>(?=.*?href=\"/a\\d+\")(.*?)</li>", RegexOption.DOT_MATCHES_ALL)
             val nameLinkRegex = Regex("<a[^>]*?class=\"[^\"]*?title[^\"]*?\"[^>]*?href=\"([^\"]+?)\"[^>]*?>(.*?)</a>|<a[^>]*?href=\"([^\"]+?)\"[^>]*?class=\"[^\"]*?title[^\"]*?\"[^>]*?>(.*?)</a>")
             val descRegex = Regex("<p[^>]*?>(.*?)</p>")
             val iconRegex = Regex("<img[^>]*?(?:src|data-src)=\"([^\"]+?)\"[^>]*?class=\"[^\"]*?(?:ach-icon|achievement-icon|icon)[^\"]*?\"|<img[^>]*?class=\"[^\"]*?(?:ach-icon|achievement-icon|icon)[^\"]*?\"[^>]*?(?:src|data-src)=\"([^\"]+?)\"|<img[^>]*?(?:src|data-src)=\"([^\"]+?)\"")
             val secretRegex = Regex("title=\"Secret Achievement\"|class=\"[^\"]*?secret[^\"]*?\"|Secret Achievement", RegexOption.IGNORE_CASE)
 
-            val matches = rowRegex.findAll(response).toList()
-            Log.d("TrueAchievementsClient", "Found ${matches.size} rows. Internal map size: ${internalIdMap.size}")
+            val matches = rowRegex.findAll(mainContent).toList()
+            Log.d("TrueAchievementsClient", "Found ${matches.size} rows in main content. Internal map size: ${internalIdMap.size}")
 
             val fetchScope = CoroutineScope(Dispatchers.IO)
             val semaphore = Semaphore(5) // Limit to 5 parallel requests
