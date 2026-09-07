@@ -34,19 +34,9 @@ fun AchievementSection(
     achievements: List<Achievement>,
     source: String?,
     onToggleAchievement: (String, Boolean) -> Unit = { _, _ -> },
-    onFetchFromTrueAchievements: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    if (achievements.isEmpty()) {
-        OutlinedButton(
-            onClick = onFetchFromTrueAchievements,
-            modifier = modifier.fillMaxWidth().padding(vertical = 8.dp),
-            shape = RoundedCornerShape(8.dp)
-        ) {
-            Text("Fetch Achievements (TrueAchievements)")
-        }
-        return
-    }
+    if (achievements.isEmpty()) return
 
     val unlockedCount = achievements.count { it.isUnlocked }
     val totalCount = achievements.size
@@ -101,14 +91,6 @@ fun AchievementSection(
                         onClick = { selectedAchievement = achievement },
                         onToggle = { isUnlocked -> onToggleAchievement(achievement.name, isUnlocked) }
                     )
-                }
-                
-                // Also add an option to re-fetch or fetch from another source
-                TextButton(
-                    onClick = onFetchFromTrueAchievements,
-                    modifier = Modifier.align(Alignment.CenterHorizontally)
-                ) {
-                    Text("Re-fetch from TrueAchievements")
                 }
             }
         }

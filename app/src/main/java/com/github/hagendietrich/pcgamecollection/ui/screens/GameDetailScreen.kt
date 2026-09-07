@@ -244,9 +244,6 @@ fun GameDetailScreen(
                         source = game.achievementsSource,
                         onToggleAchievement = { name, isUnlocked ->
                             viewModel.toggleAchievement(name, isUnlocked)
-                        },
-                        onFetchFromTrueAchievements = {
-                            viewModel.fetchTrueAchievements()
                         }
                     )
                     
