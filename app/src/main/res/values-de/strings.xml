@@ -43,6 +43,7 @@
     <string name="sort_by_date_asc">Veröffentlichungsdatum (Älteste)</string>
     <string name="sort_by_date_desc">Veröffentlichungsdatum (Neueste)</string>
     <string name="sort_by_date_added_desc">Datum hinzugefügt (Neueste)</string>
+    <string name="sort_by_price_asc">Bester Preis (Niedrigste)</string>
     <string name="sort_by_playtime_asc">Spielzeit (Niedrigste)</string>
     <string name="sort_by_playtime_desc">Spielzeit (Höchste)</string>
     <string name="detail_remove">Aus Sammlung entfernen</string>

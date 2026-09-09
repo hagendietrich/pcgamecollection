@@ -454,6 +454,14 @@ class GameRepository(
         return igdbClient.searchGames(clientId, query)
     }
 
+    suspend fun getIgdbGame(igdbId: Long): IgdbGame? = withContext(Dispatchers.IO) {
+        val clientId = settingsRepository.clientId.firstOrNull() ?: return@withContext null
+        val clientSecret = settingsRepository.clientSecret.firstOrNull() ?: return@withContext null
+        
+        igdbClient.authenticate(clientId, clientSecret)
+        igdbClient.getGamesByIds(clientId, listOf(igdbId)).firstOrNull()
+    }
+
     suspend fun getTopAnticipatedGames(limit: Int = 50): List<IgdbGame> {
         val clientId = settingsRepository.clientId.firstOrNull() ?: return emptyList()
         val clientSecret = settingsRepository.clientSecret.firstOrNull() ?: return emptyList()
@@ -1493,6 +1501,7 @@ class GameRepository(
             igdbId = igdbGame.id,
             parentIgdbId = igdbGame.parentGame,
             category = igdbGame.category,
+            releaseDate = igdbGame.firstReleaseDate,
             platformPrices = buildPlatformPrices(igdbGame)
         )
     }
@@ -1514,10 +1523,10 @@ class GameRepository(
                 val igdbGame = igdbClient.getGamesByIds(clientId, listOf(igdbId)).firstOrNull()
                 if (igdbGame != null) {
                     val rebuilt = buildPlatformPrices(igdbGame)
-                    if (rebuilt.isNotEmpty()) {
-                        println("Wishlist Refresh: Rebuilt '${game.title}' with ${rebuilt.size} stores")
-                        return@withContext game.copy(platformPrices = rebuilt)
-                    }
+                    return@withContext game.copy(
+                        platformPrices = if (rebuilt.isNotEmpty()) rebuilt else game.platformPrices,
+                        releaseDate = igdbGame.firstReleaseDate ?: game.releaseDate
+                    )
                 }
             }
         }
@@ -2091,8 +2100,22 @@ class GameRepository(
         }
         Log.d("GameRepository", "Achievement Fetch: Starting for '${game.title}' (ID: $gameId)")
         
+        val isSteamPlatform = game.platforms.contains("Steam")
+        val isGogPlatform = game.platforms.contains("GOG")
+        val isEpicPlatform = game.platforms.contains("Epic")
+
+        // Priority Logic: Try to find a Steam AppID if missing from sourceIds
+        var steamAppId = game.sourceIds["STEAM"]?.toIntOrNull()
+        if (steamAppId == null && isSteamPlatform) {
+            game.storeUrls["Steam"]?.let { url ->
+                steamAppId = Regex("/app/(\\d+)").find(url)?.groupValues?.get(1)?.toIntOrNull()
+                if (steamAppId != null) {
+                    Log.d("GameRepository", "Achievement Fetch: Scavenged Steam AppID $steamAppId from storeUrl")
+                }
+            }
+        }
+
         // 1. Steam (Priority)
-        val steamAppId = game.sourceIds["STEAM"]?.toIntOrNull()
         if (steamAppId != null) {
             Log.d("GameRepository", "Achievement Fetch [Steam]: Found AppID $steamAppId")
             val apiKey = settingsRepository.steamApiKey.firstOrNull()
@@ -2110,10 +2133,12 @@ class GameRepository(
                     try {
                         val schema = steamClient.fetchAchievementSchema(apiKey, steamAppId)
                         val progress = steamClient.fetchUserAchievements(apiKey, steamId, steamAppId)
+                        Log.d("GameRepository", "Achievement Fetch [Steam]: Schema size: ${schema.size}, Progress size: ${progress.size}")
                     
                         if (schema.isNotEmpty()) {
                             val achievements = schema.map { def ->
-                                val userAch = progress.find { it.apiname == def.name }
+                                // Use case-insensitive matching for Steam API names
+                                val userAch = progress.find { it.apiname.equals(def.name, ignoreCase = true) }
                                 Achievement(
                                     name = def.displayName ?: def.name,
                                     description = def.description,
@@ -2123,11 +2148,12 @@ class GameRepository(
                                     isHidden = def.hidden == 1
                                 )
                             }
+                            val unlockedCount = achievements.count { it.isUnlocked }
                             gameDao.updateGame(game.copy(
                                 achievements = achievements,
                                 achievementsSource = "Steam"
                             ))
-                            Log.i("GameRepository", "Achievement Fetch [Steam]: Successfully saved ${achievements.size} achievements")
+                            Log.i("GameRepository", "Achievement Fetch [Steam]: Successfully saved ${achievements.size} achievements ($unlockedCount unlocked)")
                             return@withContext
                         }
                     } catch (e: Exception) {
@@ -2141,7 +2167,10 @@ class GameRepository(
 
         // 2. GOG (Fallback 1)
         val gogId = game.sourceIds["GOG"]
-        if (gogId != null) {
+        
+        // Priority Rule: If it's a Steam game but not a GOG game, don't fall back to GOG achievements.
+        // This avoids fetching achievements from the wrong version of the game (e.g. false positives in GOG search).
+        if (gogId != null && (isGogPlatform || !isSteamPlatform)) {
             Log.d("GameRepository", "Achievement Fetch [GOG]: Found GOG ID $gogId, SourceIDs: ${game.sourceIds}")
             var userId = settingsRepository.gogUserId.firstOrNull()
             val username = settingsRepository.lastGogUsername.firstOrNull()
@@ -2164,19 +2193,9 @@ class GameRepository(
                     val gogProgress = rawGogProgress.sortedBy { it.achievement_key.toLongOrNull() ?: 0L }
 
                     // HYBRID APPROACH: If we have a Steam AppID, try to get high-quality metadata from Steam
-                    var scavengedSteamAppId = game.sourceIds["STEAM"]?.toIntOrNull()
+                    var scavengedSteamAppId = steamAppId
                     
                     Log.d("GameRepository", "Achievement Fetch [GOG]: Progress fetched (${gogProgress.size}). Checking Hybrid sync. SourceIds: ${game.sourceIds}, Extracted AppID: $scavengedSteamAppId")
-
-                    // FALLBACK Scavenge: Try to extract AppID from storeUrls if STEAM key is missing
-                    if (scavengedSteamAppId == null) {
-                        game.storeUrls["Steam"]?.let { url ->
-                            scavengedSteamAppId = Regex("/app/(\\d+)").find(url)?.groupValues?.get(1)?.toIntOrNull()
-                            if (scavengedSteamAppId != null) {
-                                Log.d("GameRepository", "Achievement Fetch [Hybrid]: Extracted Steam AppID $scavengedSteamAppId from storeUrl")
-                            }
-                        }
-                    }
                     
                     val steamApiKey = settingsRepository.steamApiKey.firstOrNull()
                     
@@ -2296,7 +2315,7 @@ class GameRepository(
         val epicSandboxId = game.sourceIds["EPIC_SANDBOX_ID"]
         val epicSlug = game.sourceIds["EPIC"]
         
-        if (epicSandboxId != null || epicSlug != null) {
+        if ((epicSandboxId != null || epicSlug != null) && (isEpicPlatform || (!isSteamPlatform && !isGogPlatform))) {
             Log.d("GameRepository", "Achievement Fetch [Epic]: Found SandboxID=$epicSandboxId, Slug=$epicSlug")
             try {
                 val sandboxId = epicSandboxId ?: epicClient.getSandboxIdFromSlug(epicSlug!!, game.title)

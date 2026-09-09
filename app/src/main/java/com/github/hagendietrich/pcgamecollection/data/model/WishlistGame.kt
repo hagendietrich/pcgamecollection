@@ -42,6 +42,7 @@ data class WishlistGame(
     val playtimeSource: String? = null,
     val platformPrices: List<PlatformPrice> = emptyList(),
     val dateAdded: Long = System.currentTimeMillis(),
+    val releaseDate: Long? = null,
     val notes: String? = null,
     val bundleIgdbIds: List<Long> = emptyList()
 ) {

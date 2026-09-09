@@ -7,13 +7,9 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.automirrored.filled.Sort
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -33,6 +29,7 @@ import com.github.hagendietrich.pcgamecollection.data.model.WishlistGame
 import com.github.hagendietrich.pcgamecollection.ui.components.AppTopBar
 import com.github.hagendietrich.pcgamecollection.ui.theme.PcGameCollectionTheme
 import com.github.hagendietrich.pcgamecollection.ui.viewmodel.WishlistSearchUiState
+import com.github.hagendietrich.pcgamecollection.ui.viewmodel.WishlistSortOrder
 import com.github.hagendietrich.pcgamecollection.ui.viewmodel.WishlistViewModel
 import java.text.DateFormat
 import java.util.Date
@@ -44,6 +41,9 @@ fun WishlistScreen(
     onNavigate: (String) -> Unit
 ) {
     val wishlistGames by viewModel.wishlistGames.collectAsState()
+    val sortOrder by viewModel.sortOrder.collectAsState()
+    val selectedGameForDetail by viewModel.selectedGameForDetail.collectAsState()
+    val libraryIgdbIds by viewModel.libraryIgdbIds.collectAsState()
     val searchUiState by viewModel.searchUiState.collectAsState()
     val isAdding by viewModel.isAdding.collectAsState()
     val refreshingIds by viewModel.refreshingIds.collectAsState()
@@ -53,6 +53,7 @@ fun WishlistScreen(
     val context = LocalContext.current
 
     var showAddDialog by remember { mutableStateOf(false) }
+    var showSortMenu by remember { mutableStateOf(false) }
     var gameToDelete by remember { mutableStateOf<WishlistGame?>(null) }
     var expandedIds by remember { mutableStateOf(setOf<Int>()) }
 
@@ -74,6 +75,76 @@ fun WishlistScreen(
                 showSearchToggle = false,
                 actions = {
                     if (wishlistGames.isNotEmpty()) {
+                        Box {
+                            IconButton(onClick = { showSortMenu = true }) {
+                                Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = stringResource(R.string.sort_title))
+                            }
+                            DropdownMenu(
+                                expanded = showSortMenu,
+                                onDismissRequest = { showSortMenu = false }
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.sort_by_date_added_desc)) },
+                                    onClick = {
+                                        viewModel.setSortOrder(WishlistSortOrder.DATE_ADDED_DESC)
+                                        showSortMenu = false
+                                    },
+                                    leadingIcon = {
+                                        if (sortOrder == WishlistSortOrder.DATE_ADDED_DESC) {
+                                            Icon(Icons.Default.Check, contentDescription = null)
+                                        }
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.sort_by_date_added_asc)) },
+                                    onClick = {
+                                        viewModel.setSortOrder(WishlistSortOrder.DATE_ADDED_ASC)
+                                        showSortMenu = false
+                                    },
+                                    leadingIcon = {
+                                        if (sortOrder == WishlistSortOrder.DATE_ADDED_ASC) {
+                                            Icon(Icons.Default.Check, contentDescription = null)
+                                        }
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.sort_by_date_desc)) },
+                                    onClick = {
+                                        viewModel.setSortOrder(WishlistSortOrder.RELEASE_DATE_DESC)
+                                        showSortMenu = false
+                                    },
+                                    leadingIcon = {
+                                        if (sortOrder == WishlistSortOrder.RELEASE_DATE_DESC) {
+                                            Icon(Icons.Default.Check, contentDescription = null)
+                                        }
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.sort_by_date_asc)) },
+                                    onClick = {
+                                        viewModel.setSortOrder(WishlistSortOrder.RELEASE_DATE_ASC)
+                                        showSortMenu = false
+                                    },
+                                    leadingIcon = {
+                                        if (sortOrder == WishlistSortOrder.RELEASE_DATE_ASC) {
+                                            Icon(Icons.Default.Check, contentDescription = null)
+                                        }
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.sort_by_price_asc)) },
+                                    onClick = {
+                                        viewModel.setSortOrder(WishlistSortOrder.BEST_PRICE)
+                                        showSortMenu = false
+                                    },
+                                    leadingIcon = {
+                                        if (sortOrder == WishlistSortOrder.BEST_PRICE) {
+                                            Icon(Icons.Default.Check, contentDescription = null)
+                                        }
+                                    }
+                                )
+                            }
+                        }
                         IconButton(onClick = { viewModel.refreshAllPrices() }) {
                             Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.wishlist_refresh_prices))
                         }
@@ -121,12 +192,29 @@ fun WishlistScreen(
                                     else expandedIds + game.id
                             },
                             onRefresh = { viewModel.refreshPrices(game) },
-                            onDelete = { gameToDelete = game }
+                            onDelete = { gameToDelete = game },
+                            onShowDetail = { viewModel.selectGameForDetail(game.igdbId) }
                         )
                     }
                 }
             }
         }
+    }
+
+    selectedGameForDetail?.let { game ->
+        IgdbGameDetailDialog(
+            game = game,
+            isAdded = libraryIgdbIds.contains(game.id),
+            isWishlisted = true,
+            onDismiss = { viewModel.selectGameForDetail(null) },
+            onAdd = {
+                viewModel.addGameToLibrary(game)
+                viewModel.selectGameForDetail(null)
+            },
+            onAddToWishlist = {
+                viewModel.selectGameForDetail(null)
+            }
+        )
     }
 
     if (showAddDialog) {
@@ -174,7 +262,8 @@ fun WishlistItemCard(
     isRefreshing: Boolean,
     onClick: () -> Unit,
     onRefresh: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onShowDetail: () -> Unit
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Row(
@@ -189,7 +278,8 @@ fun WishlistItemCard(
                 contentDescription = game.title,
                 modifier = Modifier
                     .width(72.dp)
-                    .fillMaxHeight(),
+                    .fillMaxHeight()
+                    .clickable { onShowDetail() },
                 contentScale = ContentScale.Crop
             )
             Spacer(modifier = Modifier.width(12.dp))
@@ -202,11 +292,17 @@ fun WishlistItemCard(
                 )
                 Spacer(modifier = Modifier.height(4.dp))
 
+                val year = game.releaseDate?.let {
+                    java.time.Instant.ofEpochSecond(it)
+                        .atZone(java.time.ZoneId.systemDefault()).year
+                }
+
                 val lowest = game.lowestPrice()
                 val storeCountRes = if (game.platformPrices.size == 1)
                     R.string.wishlist_store_count_one else R.string.wishlist_store_count_many
                 Text(
-                    text = stringResource(storeCountRes, game.platformPrices.size) +
+                    text = (year?.let { "$it · " } ?: "") +
+                            stringResource(storeCountRes, game.platformPrices.size) +
                             (lowest?.let { " · ${formatEurPrice(it.price)}" } ?: ""),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -471,7 +567,8 @@ fun WishlistScreenPreview() {
                                 else expandedIds + game.id
                         },
                         onRefresh = {},
-                        onDelete = {}
+                        onDelete = {},
+                        onShowDetail = {}
                     )
                 }
             }

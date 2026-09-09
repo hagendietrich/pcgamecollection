@@ -45,6 +45,7 @@
     <string name="sort_by_date_desc">Release Date (Newest)</string>
     <string name="sort_by_date_added_asc">Date added (Oldest)</string>
     <string name="sort_by_date_added_desc">Date added (Newest)</string>
+    <string name="sort_by_price_asc">Best Price (Lowest)</string>
     <string name="sort_by_playtime_asc">Playtime (Lowest)</string>
     <string name="sort_by_playtime_desc">Playtime (Highest)</string>
     <string name="detail_remove">Remove from Collection</string>

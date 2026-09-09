@@ -95,8 +95,17 @@ class SteamClient {
     @Serializable
     data class SteamPlayerStats(
         val achievements: List<SteamPlayerAchievement> = emptyList(),
-        val success: Boolean = false
-    )
+        val error: String? = null,
+        val success: JsonElement? = null // Can be Boolean or Int
+    ) {
+        val isSuccessful: Boolean get() = when (val s = success) {
+            is JsonPrimitive -> {
+                if (s.isString) s.content.lowercase() == "true"
+                else s.booleanOrNull == true || s.intOrNull == 1
+            }
+            else -> false
+        }
+    }
 
     @Serializable
     data class SteamPlayerAchievement(
@@ -209,8 +218,67 @@ class SteamClient {
     }
 
     suspend fun fetchUserAchievements(apiKey: String, steamId: String, appId: Int): List<SteamPlayerAchievement> {
-        val url = "https://api.steampowered.com/ISteamUserStats/GetPlayerAchievements/v1/"
-        Log.d("SteamClient", "Fetching user achievements for AppID $appId, User $steamId from $url")
+        // Try GetPlayerAchievements first
+        var achievements = fetchUserAchievementsInternal(
+            "https://api.steampowered.com/ISteamUserStats/GetPlayerAchievements/v1/",
+            apiKey, steamId, appId
+        )
+        
+        // Fallback to GetUserStatsForGame if empty or failed
+        if (achievements.isEmpty()) {
+            Log.d("SteamClient", "GetPlayerAchievements empty, trying GetUserStatsForGame fallback...")
+            achievements = fetchUserAchievementsInternal(
+                "https://api.steampowered.com/ISteamUserStats/GetUserStatsForGame/v2/",
+                apiKey, steamId, appId
+            )
+        }
+
+        // Tier 3 Fallback: Legacy XML API (often bypasses JSON API privacy quirks)
+        if (achievements.isEmpty()) {
+            Log.d("SteamClient", "JSON APIs failed, trying Legacy XML fallback...")
+            achievements = fetchUserAchievementsXml(steamId, appId)
+        }
+        
+        return achievements
+    }
+
+    private suspend fun fetchUserAchievementsXml(steamId: String, appId: Int): List<SteamPlayerAchievement> {
+        val url = "https://steamcommunity.com/profiles/$steamId/stats/$appId/?xml=1"
+        Log.d("SteamClient", "Fetching user achievements from XML: $url")
+        return try {
+            val response = client.get(url).bodyAsText()
+            
+            val results = mutableListOf<SteamPlayerAchievement>()
+            // Very simple XML parsing for <achievement> blocks
+            val achRegex = Regex("<achievement>.*?</achievement>", RegexOption.DOT_MATCHES_ALL)
+            val apiNameRegex = Regex("<apiname>(.*?)</apiname>")
+            val closedRegex = Regex("<closed>(\\d)</closed>") // 1 = Unlocked
+            val unlockTimeRegex = Regex("<unlockTime>(\\d+)</unlockTime>")
+
+            achRegex.findAll(response).forEach { match ->
+                val content = match.value
+                val apiName = apiNameRegex.find(content)?.groupValues?.get(1)
+                val isUnlocked = closedRegex.find(content)?.groupValues?.get(1) == "1"
+                val unlockTime = unlockTimeRegex.find(content)?.groupValues?.get(1)?.toLongOrNull() ?: 0L
+
+                if (apiName != null) {
+                    results.add(SteamPlayerAchievement(
+                        apiname = apiName,
+                        achieved = if (isUnlocked) 1 else 0,
+                        unlocktime = unlockTime
+                    ))
+                }
+            }
+            Log.d("SteamClient", "XML Fallback: Found ${results.size} achievements (${results.count { it.achieved == 1 }} unlocked)")
+            results
+        } catch (e: Exception) {
+            Log.e("SteamClient", "XML Fallback failed: ${e.message}")
+            emptyList()
+        }
+    }
+
+    private suspend fun fetchUserAchievementsInternal(url: String, apiKey: String, steamId: String, appId: Int): List<SteamPlayerAchievement> {
+        Log.d("SteamClient", "Fetching user achievements from $url (AppID: $appId, User: $steamId)")
         return try {
             val response = client.get(url) {
                 parameter("key", apiKey)
@@ -219,22 +287,27 @@ class SteamClient {
             }
             
             if (response.status == HttpStatusCode.OK) {
-                val playerResponse: SteamPlayerAchievementsResponse = response.body()
-                if (playerResponse.playerstats?.success == true) {
-                    val count = playerResponse.playerstats.achievements.size
-                    Log.d("SteamClient", "Steam user achievements response: success, found $count entries")
-                    playerResponse.playerstats.achievements
+                val body = response.bodyAsText()
+                val json = Json { ignoreUnknownKeys = true; coerceInputValues = true }
+                
+                // Both APIs return almost the same structure under playerstats
+                val stats = json.decodeFromString<SteamPlayerAchievementsResponse>(body).playerstats
+                
+                if (stats?.isSuccessful == true) {
+                    val count = stats.achievements.size
+                    Log.d("SteamClient", "Steam user achievements response ($url): success, found $count entries")
+                    stats.achievements
                 } else {
-                    Log.w("SteamClient", "Steam user achievements response: failed (success=false)")
+                    Log.w("SteamClient", "Steam user achievements response ($url): failed (success=${stats?.success}, error=${stats?.error})")
                     emptyList()
                 }
             } else {
                 val errorBody = response.bodyAsText()
-                Log.e("SteamClient", "Error fetching user achievements: Status ${response.status}, Body: $errorBody")
+                Log.e("SteamClient", "Error fetching user achievements from $url: Status ${response.status}, Body: $errorBody")
                 emptyList()
             }
         } catch (e: Exception) {
-            Log.e("SteamClient", "Error fetching user achievements: ${e.message}", e)
+            Log.e("SteamClient", "Error fetching user achievements from $url: ${e.message}")
             emptyList()
         }
     }
