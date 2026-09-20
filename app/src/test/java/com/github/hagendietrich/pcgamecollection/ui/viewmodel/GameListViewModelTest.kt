@@ -41,6 +41,9 @@ class GameListViewModelTest {
         every { settingsRepository.groupingType } returns flowOf(GroupingType.NONE)
         every { settingsRepository.libraryFilters } returns flowOf(LibraryFilters())
         every { settingsRepository.columnCount } returns flowOf(3)
+        every { settingsRepository.currentSearchTerm } returns flowOf("")
+        coEvery { settingsRepository.updateCurrentSearchTerm(any()) } just runs
+        every { gameRepository.normalizeDate(any()) } answers { it.invocation.args[0] as String? }
         
         viewModel = GameListViewModel(gameRepository, settingsRepository)
     }

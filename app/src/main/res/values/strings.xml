@@ -5,6 +5,8 @@
     <string name="menu_add_game">Add Game</string>
     <string name="menu_sync">Cloud Sync</string>
     <string name="menu_import">Import/Export Games</string>
+    <string name="menu_statistics">Statistics</string>
+    <string name="statistics_title">Statistics</string>
     <string name="import_export_title">Import/Export</string>
     <string name="menu_settings">Settings (IGDB)</string>
     <string name="menu_about">About</string>

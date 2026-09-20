@@ -122,6 +122,13 @@ fun AppTopBar(
                             onNavigate(Screen.ImportExport.route)
                         }
                     )
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.menu_statistics)) },
+                        onClick = {
+                            showMenu = false
+                            onNavigate(Screen.Statistics.route)
+                        }
+                    )
                     HorizontalDivider()
                     DropdownMenuItem(
                         text = { Text(stringResource(R.string.save_current_view)) },

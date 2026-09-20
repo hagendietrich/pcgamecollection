@@ -31,6 +31,7 @@ sealed class Screen(val route: String) {
     object Setup : Screen("setup")
     object Sync : Screen("sync")
     object ImportExport : Screen("import_export")
+    object Statistics : Screen("statistics")
     object About : Screen("about")
     object GameDetails : Screen("game_details/{gameId}") {
         fun createRoute(gameId: Int) = "game_details/$gameId"
@@ -132,6 +133,20 @@ fun AppNavGraph(
             ImportScreen(
                 viewModel = viewModel,
                 onNavigate = { route -> navController.navigate(route) },
+                onBack = { navController.popBackStack() }
+            )
+        }
+        composable(Screen.Statistics.route) {
+            val viewModel: StatisticsViewModel = viewModel(
+                factory = object : ViewModelProvider.Factory {
+                    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                        @Suppress("UNCHECKED_CAST")
+                        return StatisticsViewModel(gameRepository) as T
+                    }
+                }
+            )
+            StatisticsScreen(
+                viewModel = viewModel,
                 onBack = { navController.popBackStack() }
             )
         }

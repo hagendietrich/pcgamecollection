@@ -5,6 +5,8 @@
     <string name="menu_add_game">Spiel hinzufügen</string>
     <string name="menu_sync">Cloud Synchronisation</string>
     <string name="menu_import">Import/Export Spiele</string>
+    <string name="menu_statistics">Statistik</string>
+    <string name="statistics_title">Statistik</string>
     <string name="import_export_title">Import/Export</string>
     <string name="menu_settings">Einstellungen (IGDB)</string>
     <string name="menu_about">Über diese App</string>
