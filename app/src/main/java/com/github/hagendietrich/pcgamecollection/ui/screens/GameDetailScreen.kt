@@ -56,7 +56,8 @@ import kotlin.math.roundToInt
 fun GameDetailScreen(
     viewModel: GameDetailViewModel,
     onBack: () -> Unit,
-    onNavigateToGame: (Int) -> Unit = {}
+    onNavigateToGame: (Int) -> Unit = {},
+    onNavigateToLibraryWithFilter: (String, String) -> Unit = { _, _ -> }
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
@@ -232,6 +233,7 @@ fun GameDetailScreen(
                         label = "Platforms",
                         items = game.platforms,
                         onLongClick = { showManagePlatformsDialog = true },
+                        onChipClick = { onNavigateToLibraryWithFilter("Platform", it) },
                         chipColor = { platform ->
                             val isOnline = platform == "Steam" || platform == "GOG" || platform == "Epic" || platform == "Ubisoft" || platform == "Battle.net"
                             if (isOnline) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f)
@@ -348,14 +350,16 @@ fun GameDetailScreen(
                     ManageableDetailRow(
                         label = "Modus",
                         items = game.gameModes,
-                        onLongClick = { showEditModeDialog = true }
+                        onLongClick = { showEditModeDialog = true },
+                        onChipClick = { onNavigateToLibraryWithFilter("Mode", it) }
                     )
                     
                     // 11. Genres
                     ManageableDetailRow(
                         label = "Genres",
                         items = game.genres,
-                        onLongClick = { showManageGenresDialog = true }
+                        onLongClick = { showManageGenresDialog = true },
+                        onChipClick = { onNavigateToLibraryWithFilter("Genre", it) }
                     )
                     
                     // 11a. Series
@@ -843,6 +847,7 @@ fun ManageableDetailRow(
     label: String,
     items: List<String>,
     onLongClick: () -> Unit,
+    onChipClick: ((String) -> Unit)? = null,
     chipColor: @Composable (String) -> Color = { MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f) }
 ) {
     var expanded by remember { mutableStateOf(false) }
@@ -885,7 +890,11 @@ fun ManageableDetailRow(
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     items.forEach { item ->
-                        DetailChip(text = item, color = chipColor(item))
+                        DetailChip(
+                            text = item, 
+                            color = chipColor(item),
+                            onClick = onChipClick?.let { { it(item) } }
+                        )
                     }
                 }
             }
@@ -898,7 +907,11 @@ fun ManageableDetailRow(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 items.forEach { item ->
-                    DetailChip(text = item, color = chipColor(item))
+                    DetailChip(
+                        text = item, 
+                        color = chipColor(item),
+                        onClick = onChipClick?.let { { it(item) } }
+                    )
                 }
             }
         }

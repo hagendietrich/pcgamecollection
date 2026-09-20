@@ -28,7 +28,12 @@ class GameListViewModel(
     val selectedGameIdForSheet: StateFlow<Int?> = _selectedGameIdForSheet.asStateFlow()
 
     private val _searchQuery = MutableStateFlow("")
-    val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
+    val searchQuery: StateFlow<String> = combine(
+        _searchQuery,
+        settingsRepository.currentSearchTerm
+    ) { local, persisted ->
+        local.ifBlank { persisted }
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, "")
 
     val allGames: StateFlow<List<Game>> = gameRepository.getAllGames()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -70,6 +75,16 @@ class GameListViewModel(
             // Filter by Genre
             if (!passesFilter(game.genres, filters.genres)) return@filter false
             
+            // Filter by Release Year
+            val year = gameRepository.normalizeDate(game.releaseDate)?.take(4)?.toIntOrNull()
+            if (filters.releaseYearStart != null && (year == null || year < filters.releaseYearStart)) return@filter false
+            if (filters.releaseYearEnd != null && (year == null || year > filters.releaseYearEnd)) return@filter false
+
+            // Filter by Playtime
+            val playtimeHours = game.playtimeMinutes / 60
+            if (filters.playtimeMinHours != null && playtimeHours < filters.playtimeMinHours) return@filter false
+            if (filters.playtimeMaxHours != null && playtimeHours > filters.playtimeMaxHours) return@filter false
+
             true
         }
 
@@ -245,6 +260,9 @@ class GameListViewModel(
 
     fun updateSearchQuery(query: String) {
         _searchQuery.value = query
+        viewModelScope.launch {
+            settingsRepository.updateCurrentSearchTerm(query)
+        }
     }
 
     fun setColumnCount(count: Int) {
@@ -569,6 +587,12 @@ class GameListViewModel(
         }
     }
 
+    fun addFilter(category: String, item: String) {
+        viewModelScope.launch {
+            settingsRepository.addFilter(category, item)
+        }
+    }
+
     private fun cycleFilter(map: Map<String, FilterType>, item: String): Map<String, FilterType> {
         val next = when (map[item] ?: FilterType.NONE) {
             FilterType.NONE -> FilterType.INCLUDE
@@ -595,8 +619,26 @@ class GameListViewModel(
                 "Status" -> current.copy(statuses = emptyMap())
                 "Labels" -> current.copy(labels = emptyMap())
                 "Genre" -> current.copy(genres = emptyMap())
+                "ReleaseYear" -> current.copy(releaseYearStart = null, releaseYearEnd = null)
+                "Playtime" -> current.copy(playtimeMinHours = null, playtimeMaxHours = null)
                 else -> current
             }
+            settingsRepository.updateFilters(newFilters)
+        }
+    }
+
+    fun updateReleaseYearFilter(start: Int?, end: Int?) {
+        viewModelScope.launch {
+            val current = libraryFilters.value
+            val newFilters = current.copy(releaseYearStart = start, releaseYearEnd = end)
+            settingsRepository.updateFilters(newFilters)
+        }
+    }
+
+    fun updatePlaytimeFilter(min: Int?, max: Int?) {
+        viewModelScope.launch {
+            val current = libraryFilters.value
+            val newFilters = current.copy(playtimeMinHours = min, playtimeMaxHours = max)
             settingsRepository.updateFilters(newFilters)
         }
     }

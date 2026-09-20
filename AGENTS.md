@@ -23,7 +23,7 @@ Import der eigenen Spiele soll aus verschiedenen Quellen möglich sein wie:
 1. [x] Projekt-Setup & Basis-Datenklassen
 2. [x] Steam Web API Integration (`GetOwnedGames`)
 3. [x] Lokale Room-Datenbank & Repository-Pattern
-4. [ ] UI-Entwicklung: Grid-basierte Library
+4. [x] UI-Entwicklung: Grid-basierte Library
 5. [x] Caching & Performance-Optimierung (Coil)
 
 ## Richtlinien für Code-Generierung

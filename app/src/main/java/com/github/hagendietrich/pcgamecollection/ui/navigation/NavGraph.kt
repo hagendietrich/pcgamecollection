@@ -20,7 +20,12 @@ import androidx.navigation.NavType
 import androidx.navigation.navArgument
 
 sealed class Screen(val route: String) {
-    object Library : Screen("library")
+    object Library : Screen("library?filterCategory={category}&filterItem={item}") {
+        fun createRoute(category: String? = null, item: String? = null): String {
+            return if (category != null && item != null) "library?filterCategory=$category&filterItem=$item"
+            else "library"
+        }
+    }
     object Wishlist : Screen("wishlist")
     object AddGame : Screen("add_game")
     object Setup : Screen("setup")
@@ -48,6 +53,10 @@ fun AppNavGraph(
     ) {
         composable(
             route = Screen.Library.route,
+            arguments = listOf(
+                navArgument("category") { type = NavType.StringType; nullable = true; defaultValue = null },
+                navArgument("item") { type = NavType.StringType; nullable = true; defaultValue = null }
+            ),
             exitTransition = {
                 slideOutHorizontally(targetOffsetX = { -it / 3 }) + fadeOut()
             },
@@ -63,6 +72,16 @@ fun AppNavGraph(
                     }
                 }
             )
+            val category = it.arguments?.getString("category")
+            val item = it.arguments?.getString("item")
+            androidx.compose.runtime.LaunchedEffect(category, item) {
+                if (category != null && item != null) {
+                    viewModel.addFilter(category, item)
+                    // Clear the arguments from the NavBackStackEntry to avoid re-applying on next composition
+                    it.arguments?.remove("category")
+                    it.arguments?.remove("item")
+                }
+            }
             GameListScreen(
                 viewModel = viewModel,
                 onNavigate = { route -> navController.navigate(route) },
@@ -161,6 +180,12 @@ fun AppNavGraph(
                 onBack = { navController.popBackStack() },
                 onNavigateToGame = { targetGameId ->
                     navController.navigate(Screen.GameDetails.createRoute(targetGameId))
+                },
+                onNavigateToLibraryWithFilter = { category, item ->
+                    navController.navigate(Screen.Library.createRoute(category, item)) {
+                        launchSingleTop = true
+                        popUpTo(Screen.Library.route) { inclusive = false }
+                    }
                 }
             )
         }

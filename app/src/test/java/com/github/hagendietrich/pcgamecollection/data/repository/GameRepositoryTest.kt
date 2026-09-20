@@ -22,6 +22,8 @@ class GameRepositoryTest {
     private val epicClient = mockk<EpicClient>()
     private val ubisoftClient = mockk<UbisoftClient>()
     private val battleNetClient = mockk<BattleNetClient>()
+    private val hltbClient = mockk<HltbClient>()
+    private val trueAchievementsClient = mockk<TrueAchievementsClient>()
     private val settingsRepository = mockk<SettingsRepository>()
 
     @Before
@@ -36,6 +38,8 @@ class GameRepositoryTest {
             epicClient,
             ubisoftClient,
             battleNetClient,
+            hltbClient,
+            trueAchievementsClient,
             settingsRepository
         )
     }

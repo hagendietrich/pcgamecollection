@@ -174,9 +174,13 @@ fun GameListScreen(
                                 expanded = showFilterMenu,
                                 onDismissRequest = { showFilterMenu = false }
                             ) {
-                                val categories = listOf("Mode", "Platform", "Status", "Labels", "Genre")
+                                val categories = listOf("Mode", "Platform", "Status", "Labels", "Genre", "ReleaseYear", "Playtime")
                                 categories.forEach { category ->
                                     val isActive = libraryFilters.isCategoryActive(category)
+                                    val displayName = when(category) {
+                                        "ReleaseYear" -> "Release Year"
+                                        else -> category
+                                    }
                                     DropdownMenuItem(
                                         text = {
                                             Row(
@@ -203,7 +207,7 @@ fun GameListScreen(
                                                     }
                                                 }
                                                 Text(
-                                                    text = category,
+                                                    text = displayName,
                                                     modifier = Modifier.padding(start = 8.dp)
                                                 )
                                             }
@@ -414,30 +418,122 @@ fun GameListScreen(
 
     if (filterCategoryToEdit != null) {
         val category = filterCategoryToEdit!!
-        val options = when (category) {
-            "Mode" -> listOf("Singleplayer", "Multiplayer", "Co-op")
-            "Platform" -> allGames.flatMap { it.platforms }.distinct().sorted()
-            "Status" -> CompletionStatus.entries.map { it.name }
-            "Labels" -> allLabels
-            "Genre" -> allGenres
-            else -> emptyList()
-        }
+        if (category == "ReleaseYear" || category == "Playtime") {
+            RangeFilterDialog(
+                categoryName = if (category == "ReleaseYear") "Release Year" else "Playtime",
+                unit = if (category == "ReleaseYear") "" else "h",
+                initialStart = if (category == "ReleaseYear") libraryFilters.releaseYearStart else libraryFilters.playtimeMinHours,
+                initialEnd = if (category == "ReleaseYear") libraryFilters.releaseYearEnd else libraryFilters.playtimeMaxHours,
+                minLimit = if (category == "ReleaseYear") 1970f else 0f,
+                maxLimit = if (category == "ReleaseYear") 2030f else 1000f,
+                onConfirm = { start, end ->
+                    if (category == "ReleaseYear") {
+                        viewModel.updateReleaseYearFilter(start, end)
+                    } else {
+                        viewModel.updatePlaytimeFilter(start, end)
+                    }
+                    filterCategoryToEdit = null
+                },
+                onDismiss = { filterCategoryToEdit = null }
+            )
+        } else {
+            val options = when (category) {
+                "Mode" -> listOf("Singleplayer", "Multiplayer", "Co-op")
+                "Platform" -> allGames.flatMap { it.platforms }.distinct().sorted()
+                "Status" -> CompletionStatus.entries.map { it.name }
+                "Labels" -> allLabels
+                "Genre" -> allGenres
+                else -> emptyList()
+            }
 
-        FilterSelectionDialog(
-            categoryName = category,
-            options = options,
-            currentFilters = when (category) {
-                "Mode" -> libraryFilters.modes
-                "Platform" -> libraryFilters.platforms
-                "Status" -> libraryFilters.statuses
-                "Labels" -> libraryFilters.labels
-                "Genre" -> libraryFilters.genres
-                else -> emptyMap()
-            },
-            onToggle = { item -> viewModel.toggleFilter(category, item) },
-            onDismiss = { filterCategoryToEdit = null }
+            FilterSelectionDialog(
+                categoryName = category,
+                options = options,
+                currentFilters = when (category) {
+                    "Mode" -> libraryFilters.modes
+                    "Platform" -> libraryFilters.platforms
+                    "Status" -> libraryFilters.statuses
+                    "Labels" -> libraryFilters.labels
+                    "Genre" -> libraryFilters.genres
+                    else -> emptyMap()
+                },
+                onToggle = { item -> viewModel.toggleFilter(category, item) },
+                onDismiss = { filterCategoryToEdit = null }
+            )
+        }
+    }
+}
+
+@Composable
+fun RangeFilterDialog(
+    categoryName: String,
+    unit: String,
+    initialStart: Int?,
+    initialEnd: Int?,
+    minLimit: Float,
+    maxLimit: Float,
+    onConfirm: (Int?, Int?) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var range by remember {
+        mutableStateOf(
+            (initialStart?.toFloat() ?: minLimit)..(initialEnd?.toFloat() ?: maxLimit)
         )
     }
+
+    val isMaxUnlimited = range.endInclusive >= maxLimit
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Filter by $categoryName") },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                val endText = if (isMaxUnlimited) "∞" else "${range.endInclusive.toInt()}$unit"
+                Text(
+                    text = "${range.start.toInt()}$unit - $endText",
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Spacer(modifier = Modifier.height(24.dp))
+                RangeSlider(
+                    value = range,
+                    onValueChange = { range = it },
+                    valueRange = minLimit..maxLimit,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("${minLimit.toInt()}$unit", style = MaterialTheme.typography.labelSmall)
+                    Text(if (isMaxUnlimited) "∞" else "${maxLimit.toInt()}$unit", style = MaterialTheme.typography.labelSmall)
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    onConfirm(
+                        range.start.toInt(),
+                        if (isMaxUnlimited) null else range.endInclusive.toInt()
+                    )
+                }
+            ) { Text("Apply") }
+        },
+        dismissButton = {
+            Row {
+                TextButton(
+                    onClick = {
+                        onConfirm(null, null)
+                    }
+                ) { Text("Clear Filter", color = MaterialTheme.colorScheme.error) }
+                TextButton(onClick = onDismiss) { Text("Cancel") }
+            }
+        }
+    )
 }
 
 @Composable

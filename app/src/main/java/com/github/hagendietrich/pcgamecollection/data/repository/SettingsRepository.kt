@@ -35,6 +35,7 @@ class SettingsRepository(private val context: Context) {
         val SORT_ORDER = stringPreferencesKey("sort_order")
         val GROUPING_TYPE = stringPreferencesKey("grouping_type") // "NONE", "STATUS", "LABEL", "PLATFORM", "GENRE"
         val LIBRARY_FILTERS = stringPreferencesKey("library_filters")
+        val CURRENT_SEARCH_TERM = stringPreferencesKey("current_search_term")
         val SAVED_GROUPING = stringPreferencesKey("saved_grouping")
         val SAVED_FILTERS = stringPreferencesKey("saved_filter")
         val SAVED_SORT_ORDER = stringPreferencesKey("saved_sort_order")
@@ -131,6 +132,38 @@ class SettingsRepository(private val context: Context) {
     suspend fun updateFilters(filters: LibraryFilters) {
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.LIBRARY_FILTERS] = Json.encodeToString(filters)
+        }
+    }
+
+    suspend fun addFilter(category: String, item: String) {
+        context.dataStore.edit { preferences ->
+            val currentJson = preferences[PreferencesKeys.LIBRARY_FILTERS]
+            val currentFilters = try {
+                if (currentJson != null) Json.decodeFromString<LibraryFilters>(currentJson) else LibraryFilters()
+            } catch (e: Exception) {
+                LibraryFilters()
+            }
+
+            val newFilters = when (category) {
+                "Mode" -> currentFilters.copy(modes = currentFilters.modes + (item to com.github.hagendietrich.pcgamecollection.data.model.FilterType.INCLUDE))
+                "Platform" -> currentFilters.copy(platforms = currentFilters.platforms + (item to com.github.hagendietrich.pcgamecollection.data.model.FilterType.INCLUDE))
+                "Status" -> currentFilters.copy(statuses = currentFilters.statuses + (item to com.github.hagendietrich.pcgamecollection.data.model.FilterType.INCLUDE))
+                "Labels" -> currentFilters.copy(labels = currentFilters.labels + (item to com.github.hagendietrich.pcgamecollection.data.model.FilterType.INCLUDE))
+                "Genre" -> currentFilters.copy(genres = currentFilters.genres + (item to com.github.hagendietrich.pcgamecollection.data.model.FilterType.INCLUDE))
+                else -> currentFilters
+            }
+
+            preferences[PreferencesKeys.LIBRARY_FILTERS] = Json.encodeToString(newFilters)
+        }
+    }
+
+    val currentSearchTerm: Flow<String> = context.dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.CURRENT_SEARCH_TERM] ?: ""
+    }
+
+    suspend fun updateCurrentSearchTerm(term: String) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.CURRENT_SEARCH_TERM] = term
         }
     }
 
