@@ -147,7 +147,8 @@ fun AppNavGraph(
             )
             StatisticsScreen(
                 viewModel = viewModel,
-                onBack = { navController.popBackStack() }
+                onBack = { navController.popBackStack() },
+                onNavigate = { route -> navController.navigate(route) }
             )
         }
         composable(Screen.Sync.route) {

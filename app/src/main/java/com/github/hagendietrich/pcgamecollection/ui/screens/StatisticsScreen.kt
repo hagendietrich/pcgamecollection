@@ -28,7 +28,8 @@ import com.github.hagendietrich.pcgamecollection.ui.viewmodel.StatisticsViewMode
 @Composable
 fun StatisticsScreen(
     viewModel: StatisticsViewModel,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onNavigate: (String) -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
@@ -36,7 +37,7 @@ fun StatisticsScreen(
         topBar = {
             AppTopBar(
                 title = stringResource(R.string.statistics_title),
-                onNavigate = {}, // Not needed as we use onBack
+                onNavigate = onNavigate,
                 showSearchToggle = false,
                 actions = {
                     IconButton(onClick = onBack) {
