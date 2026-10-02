@@ -12,6 +12,9 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -34,6 +37,7 @@ import com.github.hagendietrich.pcgamecollection.R
 import com.github.hagendietrich.pcgamecollection.data.model.CompletionStatus
 import com.github.hagendietrich.pcgamecollection.data.model.Game
 import com.github.hagendietrich.pcgamecollection.data.model.GroupingType
+import com.github.hagendietrich.pcgamecollection.data.model.LibraryViewSnapshot
 import com.github.hagendietrich.pcgamecollection.data.model.SortOrder
 import com.github.hagendietrich.pcgamecollection.ui.components.AppTopBar
 import com.github.hagendietrich.pcgamecollection.ui.components.ManageableChip
@@ -103,8 +107,8 @@ fun GameListScreen(
                 AppTopBar(
                     title = stringResource(R.string.library_title),
                     onNavigate = onNavigate,
-                    onSaveView = { viewModel.saveViewSnapshot() },
-                    onLoadView = { viewModel.restoreViewSnapshot() },
+                    onSaveView = { viewModel.requestSaveViewDialog() },
+                    onLoadView = { viewModel.requestLoadViewDialog() },
                     isSearchActive = true,
                     searchQuery = searchQuery,
                     onSearchQueryChange = { viewModel.updateSearchQuery(it) },
@@ -462,6 +466,142 @@ fun GameListScreen(
             )
         }
     }
+
+    val showSaveViewDialog by viewModel.showSaveViewDialog.collectAsState()
+    val showLoadViewDialog by viewModel.showLoadViewDialog.collectAsState()
+    val restoreRequest by viewModel.restoreRequest.collectAsState()
+    val savedViews by viewModel.savedViews.collectAsState()
+
+    if (showSaveViewDialog) {
+        SaveViewDialog(
+            onDismiss = { viewModel.dismissSaveViewDialog() },
+            onSave = { name -> viewModel.saveViewSnapshot(name) }
+        )
+    }
+
+    if (showLoadViewDialog) {
+        LoadViewDialog(
+            views = savedViews,
+            onDismiss = { viewModel.dismissLoadViewDialog() },
+            onPick = { view -> viewModel.requestRestoreView(view) },
+            onDelete = { name -> viewModel.deleteSavedView(name) }
+        )
+    }
+
+    if (restoreRequest != null) {
+        AlertDialog(
+            onDismissRequest = { viewModel.cancelRestoreView() },
+            title = { Text(stringResource(R.string.restore_view_confirm_title)) },
+            text = { Text(stringResource(R.string.restore_view_confirm_text)) },
+            confirmButton = {
+                TextButton(onClick = { viewModel.restoreViewSnapshot() }) {
+                    Text(stringResource(R.string.restore))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { viewModel.cancelRestoreView() }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
+    }
+}
+
+@Composable
+fun SaveViewDialog(
+    onDismiss: () -> Unit,
+    onSave: (String) -> Unit
+) {
+    var name by remember { mutableStateOf("") }
+    val isBlank = name.isBlank()
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.save_view_title)) },
+        text = {
+            OutlinedTextField(
+                value = name,
+                onValueChange = { name = it },
+                label = { Text(stringResource(R.string.view_name_label)) },
+                placeholder = { Text(stringResource(R.string.view_name_placeholder)) },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true
+            )
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onSave(name.trim()) },
+                enabled = !isBlank
+            ) { Text(stringResource(R.string.save)) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.cancel))
+            }
+        }
+    )
+}
+
+@Composable
+fun LoadViewDialog(
+    views: List<LibraryViewSnapshot>,
+    onDismiss: () -> Unit,
+    onPick: (LibraryViewSnapshot) -> Unit,
+    onDelete: (String) -> Unit
+) {
+    val dateFormat = remember { SimpleDateFormat("dd. MMM yyyy", Locale.getDefault()) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.load_view_dialog_title)) },
+        text = {
+            if (views.isEmpty()) {
+                Column(
+                    modifier = Modifier.padding(vertical = 16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.VisibilityOff,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(stringResource(R.string.load_view_empty), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 400.dp)
+                ) {
+                    items(views) { view ->
+                        val savedDate = remember(view.savedAt) { dateFormat.format(Date(view.savedAt)) }
+                        ListItem(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onPick(view) }
+                                .padding(vertical = 4.dp),
+                            headlineContent = { Text(view.name) },
+                            supportingContent = { Text(savedDate, style = MaterialTheme.typography.labelSmall) },
+                            trailingContent = {
+                                IconButton(onClick = { onDelete(view.name) }) {
+                                    Icon(
+                                        Icons.Default.Delete,
+                                        contentDescription = stringResource(R.string.delete_view),
+                                        tint = MaterialTheme.colorScheme.error
+                                    )
+                                }
+                            }
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.cancel))
+            }
+        }
+    )
 }
 
 @Composable

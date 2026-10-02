@@ -653,25 +653,79 @@ class GameListViewModel(
         }
     }
 
-    fun saveViewSnapshot() {
+    val savedViews: StateFlow<List<LibraryViewSnapshot>> = settingsRepository.savedViews
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    private val _showSaveViewDialog = MutableStateFlow(false)
+    val showSaveViewDialog: StateFlow<Boolean> = _showSaveViewDialog.asStateFlow()
+
+    private val _showLoadViewDialog = MutableStateFlow(false)
+    val showLoadViewDialog: StateFlow<Boolean> = _showLoadViewDialog.asStateFlow()
+
+    private val _restoreRequest = MutableStateFlow<LibraryViewSnapshot?>(null)
+    val restoreRequest: StateFlow<LibraryViewSnapshot?> = _restoreRequest.asStateFlow()
+
+    init {
+        viewModelScope.launch {
+            settingsRepository.migrateSavedViewsIfNeeded()
+        }
+    }
+
+    fun requestSaveViewDialog() {
+        _showSaveViewDialog.value = true
+    }
+
+    fun dismissSaveViewDialog() {
+        _showSaveViewDialog.value = false
+    }
+
+    fun requestLoadViewDialog() {
+        _showLoadViewDialog.value = true
+    }
+
+    fun dismissLoadViewDialog() {
+        _showLoadViewDialog.value = false
+    }
+
+    fun requestRestoreView(view: LibraryViewSnapshot) {
+        _restoreRequest.value = view
+    }
+
+    fun cancelRestoreView() {
+        _restoreRequest.value = null
+    }
+
+    fun deleteSavedView(name: String) {
+        viewModelScope.launch {
+            settingsRepository.deleteSavedView(name)
+        }
+    }
+
+    fun saveViewSnapshot(name: String) {
         viewModelScope.launch { // launches a coroutine for IO operation
             settingsRepository.saveLibrarySnapshot(
+                name = name,
                 searchTerm = searchQuery.value,
                 grouping = groupingType.value,
                 filters = libraryFilters.value,
                 sortOrder = sortOrder.value,
                 columns = columnCount.value
             )
+            _showSaveViewDialog.value = false
             _events.emit(R.string.view_saved)
         }
     }
 
     fun restoreViewSnapshot() {
         viewModelScope.launch {
-            val savedSearchTerm = settingsRepository.restoreLibrarySnapshot()
+            val view = _restoreRequest.value
+            if (view == null) return@launch
+            val savedSearchTerm = settingsRepository.restoreLibrarySnapshot(view.name)
             if (savedSearchTerm != null) {
                 _searchQuery.value = savedSearchTerm
             }
+            _restoreRequest.value = null
+            _showLoadViewDialog.value = false
             _events.emit(R.string.view_restored)
         }
     }

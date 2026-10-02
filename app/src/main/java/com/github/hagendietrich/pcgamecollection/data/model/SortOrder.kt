@@ -1,5 +1,8 @@
 package com.github.hagendietrich.pcgamecollection.data.model
 
+import kotlinx.serialization.Serializable
+
+@Serializable
 enum class SortOrder {
     TITLE_ASC,
     RELEASE_DATE_ASC,

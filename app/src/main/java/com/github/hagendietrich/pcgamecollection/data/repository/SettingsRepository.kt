@@ -8,12 +8,15 @@ import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import com.github.hagendietrich.pcgamecollection.data.model.GroupingType
 import com.github.hagendietrich.pcgamecollection.data.model.LibraryFilters
+import com.github.hagendietrich.pcgamecollection.data.model.LibraryViewSnapshot
 import com.github.hagendietrich.pcgamecollection.data.model.SortOrder
 import com.github.hagendietrich.pcgamecollection.dataStore
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import java.util.Locale
 
 class SettingsRepository(private val context: Context) {
 
@@ -41,53 +44,168 @@ class SettingsRepository(private val context: Context) {
         val SAVED_SORT_ORDER = stringPreferencesKey("saved_sort_order")
         val SAVED_SEARCH_TERM = stringPreferencesKey("saved_search_term")
         val SAVED_COLUMN_COUNT = intPreferencesKey("save_column_count")
+        val SAVED_VIEWS = stringPreferencesKey("saved_views")
     }
 
-    suspend fun saveLibrarySnapshot(
-        searchTerm: String,
-        grouping: GroupingType,
-        filters: LibraryFilters,
-        sortOrder: SortOrder,
-        columns: Int
-    ) {
-        context.dataStore.edit { prefs ->
-            prefs[PreferencesKeys.SAVED_SEARCH_TERM] = searchTerm
-            prefs[PreferencesKeys.SAVED_GROUPING] = grouping.name
-            prefs[PreferencesKeys.SAVED_FILTERS] = Json.encodeToString(filters)
-            prefs[PreferencesKeys.SAVED_SORT_ORDER] = sortOrder.name
-            prefs[PreferencesKeys.SAVED_COLUMN_COUNT] = columns
+    companion object {
+        private fun defaultViewName(): String {
+            val language = Locale.getDefault().language
+            return if (language.startsWith("de")) "Meine Ansicht" else "My View"
         }
     }
 
-    suspend fun restoreLibrarySnapshot(): String? {
-        var savedSearchTerm: String? = null
-        context.dataStore.edit { prefs ->
-            savedSearchTerm = prefs[PreferencesKeys.SAVED_SEARCH_TERM]
-            
-            prefs[PreferencesKeys.SAVED_GROUPING]?.let { 
-                prefs[PreferencesKeys.GROUPING_TYPE] = it 
+    /**
+     * Emits the list of named saved views, sorted by recency (newest first).
+     * Returns an empty list when none are stored.
+     */
+    val savedViews: Flow<List<LibraryViewSnapshot>> = context.dataStore.data.map { preferences ->
+        val jsonStr = preferences[PreferencesKeys.SAVED_VIEWS]
+        if (jsonStr != null) {
+            try {
+                val list = Json.decodeFromString<List<LibraryViewSnapshot>>(jsonStr)
+                list.sortedByDescending { it.savedAt }
+            } catch (e: Exception) {
+                emptyList()
             }
-            prefs[PreferencesKeys.SAVED_FILTERS]?.let { 
-                prefs[PreferencesKeys.LIBRARY_FILTERS] = it 
-            }
-            prefs[PreferencesKeys.SAVED_SORT_ORDER]?.let { 
-                prefs[PreferencesKeys.SORT_ORDER] = it 
-            }
-            prefs[PreferencesKeys.SAVED_COLUMN_COUNT]?.let { 
-                prefs[PreferencesKeys.COLUMN_COUNT] = it 
-            }
+        } else {
+            emptyList()
         }
-        return savedSearchTerm
     }
 
-    val columnCount: Flow<Int> = context.dataStore.data.map { preferences ->
-        preferences[PreferencesKeys.COLUMN_COUNT] ?: 3 // Default to 3 columns
+    /**
+     * One-time migration: if the new list is empty but the old flat-key snapshot
+     * (all five keys) is present, promote it into a single named view and clear
+     * the legacy keys so it isn't migrated twice.
+     * Returns true if a migration took place.
+     */
+    suspend fun migrateSavedViewsIfNeeded(): Boolean {
+        var migrated = false
+        context.dataStore.edit { prefs ->
+            val existing = prefs[PreferencesKeys.SAVED_VIEWS]
+            val hasNewList = existing != null && existing.contains("name")
+
+            val legacyGrouping = prefs[PreferencesKeys.SAVED_GROUPING]
+            val legacyFilters = prefs[PreferencesKeys.SAVED_FILTERS]
+            val legacySortOrder = prefs[PreferencesKeys.SAVED_SORT_ORDER]
+            val legacySearchTerm = prefs[PreferencesKeys.SAVED_SEARCH_TERM]
+            val legacyColumns = prefs[PreferencesKeys.SAVED_COLUMN_COUNT]
+
+            val hasLegacy = legacyGrouping != null && legacyFilters != null &&
+                legacySortOrder != null && legacySearchTerm != null && legacyColumns != null
+
+            if (!hasNewList && hasLegacy) {
+                val grouping = try {
+                    GroupingType.valueOf(legacyGrouping!!)
+                } catch (_: Exception) {
+                    GroupingType.NONE
+                }
+                val sortOrder = try {
+                    SortOrder.valueOf(legacySortOrder!!)
+                } catch (_: Exception) {
+                    SortOrder.TITLE_ASC
+                }
+                val filters = try {
+                    Json.decodeFromString<LibraryFilters>(legacyFilters!!)
+                } catch (_: Exception) {
+                    LibraryFilters()
+                }
+
+                val snapshot = LibraryViewSnapshot(
+                    name = defaultViewName(),
+                    savedAt = System.currentTimeMillis(),
+                    searchTerm = legacySearchTerm!!,
+                    grouping = grouping,
+                    filters = filters,
+                    sortOrder = sortOrder,
+                    columns = legacyColumns!!
+                )
+
+                prefs[PreferencesKeys.SAVED_VIEWS] = Json.encodeToString(listOf(snapshot))
+                prefs.remove(PreferencesKeys.SAVED_SEARCH_TERM)
+                prefs.remove(PreferencesKeys.SAVED_GROUPING)
+                prefs.remove(PreferencesKeys.SAVED_FILTERS)
+                prefs.remove(PreferencesKeys.SAVED_SORT_ORDER)
+                prefs.remove(PreferencesKeys.SAVED_COLUMN_COUNT)
+
+                migrated = true
+            }
+        }
+        return migrated
+    }
+
+    suspend fun saveLibrarySnapshot(name: String, searchTerm: String, grouping: GroupingType, filters: LibraryFilters, sortOrder: SortOrder, columns: Int) {
+        val newSnapshot = LibraryViewSnapshot(
+            name = name.trim(),
+            savedAt = System.currentTimeMillis(),
+            searchTerm = searchTerm,
+            grouping = grouping,
+            filters = filters,
+            sortOrder = sortOrder,
+            columns = columns
+        )
+
+        context.dataStore.edit { prefs ->
+            val jsonStr = prefs[PreferencesKeys.SAVED_VIEWS]
+            val existing = jsonStr?.let {
+                try {
+                    Json.decodeFromString<List<LibraryViewSnapshot>>(it)
+                } catch (e: Exception) {
+                    null
+                }
+            } ?: emptyList()
+
+            val others = existing.filter { it.name.trim().compareTo(name.trim(), ignoreCase = true) != 0 }
+            prefs[PreferencesKeys.SAVED_VIEWS] = Json.encodeToString(others + newSnapshot)
+        }
+    }
+
+    suspend fun restoreLibrarySnapshot(name: String): String? {
+        val jsonStr = context.dataStore.data.first()[PreferencesKeys.SAVED_VIEWS]
+        if (jsonStr == null) return null
+        val views = try {
+            Json.decodeFromString<List<LibraryViewSnapshot>>(jsonStr)
+        } catch (e: Exception) {
+            null
+        }
+        val view = views?.firstOrNull { it.name.trim().compareTo(name.trim(), ignoreCase = true) == 0 } ?: return null
+
+        context.dataStore.edit { prefs ->
+            prefs[PreferencesKeys.GROUPING_TYPE] = view.grouping.name
+            prefs[PreferencesKeys.LIBRARY_FILTERS] = Json.encodeToString(view.filters)
+            prefs[PreferencesKeys.SORT_ORDER] = view.sortOrder.name
+            prefs[PreferencesKeys.COLUMN_COUNT] = view.columns
+        }
+        return view.searchTerm
+    }
+
+    suspend fun deleteSavedView(name: String) {
+        context.dataStore.edit { prefs ->
+            val jsonStr = prefs[PreferencesKeys.SAVED_VIEWS]
+            val existing = jsonStr?.let {
+                try {
+                    Json.decodeFromString<List<LibraryViewSnapshot>>(it)
+                } catch (e: Exception) {
+                    null
+                }
+            } ?: emptyList()
+
+            val remaining = existing.filter { it.name.trim().compareTo(name.trim(), ignoreCase = true) != 0 }
+            if (remaining.isEmpty()) {
+                prefs.remove(PreferencesKeys.SAVED_VIEWS)
+            } else {
+                prefs[PreferencesKeys.SAVED_VIEWS] = Json.encodeToString(remaining)
+            }
+        }
     }
 
     suspend fun updateColumnCount(count: Int) {
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.COLUMN_COUNT] = count.coerceIn(1, 20) // Keep it between 1 and 20
         }
+    }
+
+    val columnCount: Flow<Int> = context.dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.COLUMN_COUNT] ?: 3
     }
 
     val sortOrder: Flow<SortOrder> = context.dataStore.data.map { preferences ->

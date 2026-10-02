@@ -75,6 +75,17 @@
     <string name="setup_error_invalid">Ungültige Zugangsdaten. Bitte überprüfe deine Client-ID und dein Secret.</string>
     <string name="view_saved">Ansicht wurde gespeichert.</string>
     <string name="view_restored">Ansicht wurde wiederhergestellt.</string>
+    <string name="save_view_title">Ansicht speichern</string>
+    <string name="view_name_label">Name</string>
+    <string name="view_name_placeholder">z. B. RPG, Beendet, Action</string>
+    <string name="save">Speichern</string>
+    <string name="cancel">Abbrechen</string>
+    <string name="restore">Wiederherstellen</string>
+    <string name="load_view_dialog_title">Ansicht laden</string>
+    <string name="load_view_empty">Keine gespeicherten Ansichten</string>
+    <string name="delete_view">Ansicht löschen</string>
+    <string name="restore_view_confirm_title">Ansicht wiederherstellen?</string>
+    <string name="restore_view_confirm_text">Ersetzt deine aktuelle Suche, Filter, Gruppierung, Sortierung und Spalten.</string>
     <string name="unlicense_text">Dies ist freie und uneingeschränkte Software, die gemeinfrei veröffentlicht wurde.\n\nJeder darf diese Software entweder in Quellcodeform oder als kompilierte Binärdatei für jeden Zweck, ob kommerziell oder nicht-kommerziell, und mit allen Mitteln kopieren, modifizieren, veröffentlichen, verwenden, kompilieren, verkaufen oder verteilen.\n\nIn Gerichtsbarkeiten, die Urheberrechtsgesetze anerkennen, widmen der oder die Autoren dieser Software alle Urheberrechtsinteressen an der Software der Gemeinfreiheit. Wir widmen diese Widmung zum Nutzen der breiten Öffentlichkeit und zum Nachteil unserer Erben und Nachfolger. Wir beabsichtigen, dass diese Widmung ein offenkundiger Akt des dauerhaften Verzichts auf alle gegenwärtigen und zukünftigen Rechte an dieser Software gemäß dem Urheberrecht ist.\n\nDIE SOFTWARE WIRD \"WIE BESEHEN\" ZUR VERFÜGUNG GESTELLT, OHNE JEGLICHE AUSDRÜCKLICHE ODER STILLSCHWEIGENDE GEWÄHRLEISTUNG, EINSCHLIESSLICH, ABER NICHT BESCHRÄNKT AUF DIE GEWÄHRLEISTUNG DER MARKTGÄNGIGKEIT, DER EIGNUNG FÜR EINEN BESTIMMTEN ZWECK UND DER NICHTVERLETZUNG VON RECHTEN DRITTER. IN KEINEM FALL SIND DIE AUTOREN FÜR ANSPRÜCHE, SCHÄDEN ODER ANDERE HAFTUNGEN HAFTBAR, SEI ES AUS EINEM VERTRAG, EINER UNERLAUBTEN HANDLUNG ODER ANDERWEITIG, DIE SICH AUS ODER IN VERBINDUNG MIT DER SOFTWARE ODER DER VERWENDUNG ODER DEM ANDERWEITIGEN UMGANG MIT DER SOFTWARE ERGEBEN.\n\nWeitere Informationen finden Sie unter &lt;https://unlicense.org&gt;</string>
     <string name="sort_by_date_added_asc">Datum hinzugefügt (Älteste)</string>
     <string name="save_current_view">Speichere aktuelle Ansicht</string>
