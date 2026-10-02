@@ -131,16 +131,44 @@ fun AchievementListItem(
         Spacer(modifier = Modifier.width(12.dp))
         
         Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = if (achievement.isHidden && !achievement.isUnlocked) "Hidden Achievement" else achievement.name,
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = if (achievement.isUnlocked) FontWeight.Bold else FontWeight.Normal,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            if (!(achievement.isHidden && !achievement.isUnlocked) && !achievement.description.isNullOrBlank()) {
+            val isGenericSecretName = achievement.name == "Hidden Achievement" || achievement.name == "Secret Achievement"
+            val titleText = if (achievement.isHidden && !achievement.isUnlocked && isGenericSecretName) "Hidden Achievement" else achievement.name
+
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = achievement.description,
+                    text = titleText,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = if (achievement.isUnlocked) FontWeight.Bold else FontWeight.Normal,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+                if (achievement.isHidden && !achievement.isUnlocked) {
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Surface(
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                        shape = RoundedCornerShape(4.dp)
+                    ) {
+                        Text(
+                            text = "Secret",
+                            style = MaterialTheme.typography.labelSmall,
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+
+            val isGenericSecretDesc = achievement.description.isNullOrBlank() || achievement.description.contains("Continue playing", ignoreCase = true)
+            val descText = if (achievement.isHidden && !achievement.isUnlocked && isGenericSecretDesc) {
+                "Secret achievement"
+            } else {
+                achievement.description
+            }
+
+            if (!descText.isNullOrBlank()) {
+                Text(
+                    text = descText,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 2,
@@ -234,8 +262,10 @@ fun AchievementDetailDialog(
             }
         },
         title = {
+            val isGenericSecretName = achievement.name == "Hidden Achievement" || achievement.name == "Secret Achievement"
+            val titleText = if (achievement.isHidden && !achievement.isUnlocked && isGenericSecretName) "Hidden Achievement" else achievement.name
             Text(
-                text = if (achievement.isHidden && !achievement.isUnlocked) "Hidden Achievement" else achievement.name,
+                text = titleText,
                 style = MaterialTheme.typography.titleMedium
             )
         },
@@ -243,10 +273,14 @@ fun AchievementDetailDialog(
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 AchievementIcon(achievement = achievement, onClick = {})
                 Spacer(modifier = Modifier.height(16.dp))
+                val isGenericSecretDesc = achievement.description.isNullOrBlank() || achievement.description.contains("Continue playing", ignoreCase = true)
+                val bodyText = if (achievement.isHidden && !achievement.isUnlocked && isGenericSecretDesc) {
+                    "This is a secret achievement. Unlock it to see the description."
+                } else {
+                    achievement.description ?: "No description available."
+                }
                 Text(
-                    text = if (achievement.isHidden && !achievement.isUnlocked) 
-                        "This is a secret achievement. Unlock it to see the description." 
-                        else achievement.description ?: "No description available.",
+                    text = bodyText,
                     style = MaterialTheme.typography.bodyMedium,
                     textAlign = TextAlign.Center
                 )

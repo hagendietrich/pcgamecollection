@@ -2106,16 +2106,18 @@ class GameRepository(
 
         // Priority Logic: Try to find a Steam AppID if missing from sourceIds
         var steamAppId = game.sourceIds["STEAM"]?.toIntOrNull()
-        if (steamAppId == null && isSteamPlatform) {
-            game.storeUrls["Steam"]?.let { url ->
-                steamAppId = Regex("/app/(\\d+)").find(url)?.groupValues?.get(1)?.toIntOrNull()
-                if (steamAppId != null) {
-                    Log.d("GameRepository", "Achievement Fetch: Scavenged Steam AppID $steamAppId from storeUrl")
+        if (steamAppId == null) {
+            game.storeUrls.values.forEach { url ->
+                if (steamAppId == null) {
+                    steamAppId = Regex("/app/(\\d+)").find(url)?.groupValues?.get(1)?.toIntOrNull()
+                    if (steamAppId != null) {
+                        Log.d("GameRepository", "Achievement Fetch: Scavenged Steam AppID $steamAppId from storeUrl")
+                    }
                 }
             }
         }
 
-        // 1. Steam (Priority)
+        // 1. Steam (Priority for Steam-owned games)
         if (steamAppId != null) {
             Log.d("GameRepository", "Achievement Fetch [Steam]: Found AppID $steamAppId")
             val apiKey = settingsRepository.steamApiKey.firstOrNull()
@@ -2135,7 +2137,12 @@ class GameRepository(
                         val progress = steamClient.fetchUserAchievements(apiKey, steamId, steamAppId)
                         Log.d("GameRepository", "Achievement Fetch [Steam]: Schema size: ${schema.size}, Progress size: ${progress.size}")
                     
-                        if (schema.isNotEmpty()) {
+                        val hasUnlockedInSteam = progress.any { it.achieved == 1 }
+
+                        // Only return pure Steam achievements if user actually unlocked progress on Steam
+                        // OR if the game is NOT owned on GOG. If the user owns the game on GOG and has 0 progress
+                        // on Steam, fall through to GOG / Hybrid GOG sync!
+                        if (schema.isNotEmpty() && (hasUnlockedInSteam || !isGogPlatform)) {
                             val achievements = schema.map { def ->
                                 // Use case-insensitive matching for Steam API names
                                 val userAch = progress.find { it.apiname.equals(def.name, ignoreCase = true) }
@@ -2166,7 +2173,25 @@ class GameRepository(
         }
 
         // 2. GOG (Fallback 1)
-        val gogId = game.sourceIds["GOG"]
+        var gogId = game.sourceIds["GOG"]
+        
+        // Try to scavenge GOG ID by searching GOG catalog if missing for a GOG game
+        if (gogId == null && isGogPlatform) {
+            try {
+                val gogResults = gogClient.searchProduct(game.title)
+                val bestMatch = gogResults.find { fuzzyTitleMatch(it.title, game.title) }
+                if (bestMatch != null) {
+                    gogId = bestMatch.productId
+                    val updatedSourceIds = game.sourceIds.toMutableMap().apply {
+                        put("GOG", gogId)
+                    }
+                    gameDao.updateGame(game.copy(sourceIds = updatedSourceIds))
+                    Log.d("GameRepository", "Achievement Fetch [GOG]: Scavenged GOG ID $gogId for '${game.title}'")
+                }
+            } catch (e: Exception) {
+                Log.w("GameRepository", "Achievement Fetch [GOG]: Search failed for '${game.title}': ${e.message}")
+            }
+        }
         
         // Priority Rule: If it's a Steam game but not a GOG game, don't fall back to GOG achievements.
         // This avoids fetching achievements from the wrong version of the game (e.g. false positives in GOG search).
@@ -2194,10 +2219,24 @@ class GameRepository(
 
                     // HYBRID APPROACH: If we have a Steam AppID, try to get high-quality metadata from Steam
                     var scavengedSteamAppId = steamAppId
+                    val steamApiKey = settingsRepository.steamApiKey.firstOrNull()
+
+                    if (scavengedSteamAppId == null && !steamApiKey.isNullOrBlank()) {
+                        try {
+                            scavengedSteamAppId = steamClient.searchAppId(game.title)
+                            if (scavengedSteamAppId != null) {
+                                Log.d("GameRepository", "Achievement Fetch [GOG-Hybrid]: Found Steam AppID $scavengedSteamAppId via search for '${game.title}'")
+                                val updatedSourceIds = game.sourceIds.toMutableMap().apply {
+                                    put("STEAM", scavengedSteamAppId.toString())
+                                }
+                                gameDao.updateGame(game.copy(sourceIds = updatedSourceIds))
+                            }
+                        } catch (e: Exception) {
+                            Log.w("GameRepository", "Achievement Fetch [GOG-Hybrid]: Failed to search Steam AppID for '${game.title}': ${e.message}")
+                        }
+                    }
                     
                     Log.d("GameRepository", "Achievement Fetch [GOG]: Progress fetched (${gogProgress.size}). Checking Hybrid sync. SourceIds: ${game.sourceIds}, Extracted AppID: $scavengedSteamAppId")
-                    
-                    val steamApiKey = settingsRepository.steamApiKey.firstOrNull()
                     
                     var finalAchievements: List<Achievement> = emptyList()
                     var usedSource = "GOG"
@@ -2232,15 +2271,11 @@ class GameRepository(
                                 }
 
                                 val gogDesc = userAch?.metadata?.description
-                                val finalDesc = if (isUnlocked || steamDef.hidden == 0) {
-                                    steamDef.description 
-                                        ?: if (!gogDesc.isNullOrBlank() && !gogDesc.contains("Continue playing", ignoreCase = true)) gogDesc else null
-                                } else {
-                                    "Continue playing to unlock this achievement."
-                                }
+                                val finalDesc = steamDef.description 
+                                    ?: if (!gogDesc.isNullOrBlank() && !gogDesc.contains("Continue playing", ignoreCase = true)) gogDesc else null
 
                                 Achievement(
-                                    name = if (isUnlocked || steamDef.hidden == 0) (steamDef.displayName ?: steamDef.name) else "Secret Achievement",
+                                    name = steamDef.displayName ?: steamDef.name,
                                     description = finalDesc,
                                     iconUrl = steamDef.icon, 
                                     isUnlocked = isUnlocked,
@@ -2268,9 +2303,19 @@ class GameRepository(
                                 val rawIcon = meta?.unlocked_icon_url ?: def.unlocked_icon_url
                                 val iconUrl = if (rawIcon?.startsWith("//") == true) "https:$rawIcon" else rawIcon
 
+                                val rawName = meta?.name
+                                val isGenericSecretName = rawName.isNullOrBlank() || 
+                                                          rawName.equals("Secret achievement", ignoreCase = true) || 
+                                                          rawName.equals("Hidden Achievement", ignoreCase = true)
+
+                                val finalName = if (!isGenericSecretName) rawName else def.name
+                                val rawDesc = meta?.description
+                                val isGenericSecretDesc = rawDesc.isNullOrBlank() || rawDesc.contains("Continue playing", ignoreCase = true)
+                                val finalDesc = if (!isGenericSecretDesc) rawDesc else def.description
+
                                 Achievement(
-                                    name = meta?.name ?: def.name,
-                                    description = meta?.description ?: def.description,
+                                    name = finalName,
+                                    description = finalDesc,
                                     iconUrl = iconUrl,
                                     isUnlocked = userAch?.unlocked == true,
                                     unlockTime = null, 

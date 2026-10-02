@@ -160,6 +160,33 @@ class SteamClient {
     }
 
     /**
+     * Searches Steam store for an AppID matching the game title.
+     */
+    suspend fun searchAppId(title: String): Int? {
+        return try {
+            val url = "https://store.steampowered.com/api/storesearch/?term=${title.replace(" ", "+")}&l=english&cc=US"
+            val response: JsonObject = client.get(url).body()
+            val items = response["items"]?.jsonArray
+            if (items != null && items.isNotEmpty()) {
+                val cleanTitle = title.lowercase().replace(Regex("[^a-z0-9]"), "")
+                for (item in items) {
+                    val obj = item.jsonObject
+                    val name = obj["name"]?.jsonPrimitive?.content ?: continue
+                    val id = obj["id"]?.jsonPrimitive?.intOrNull ?: continue
+                    val cleanName = name.lowercase().replace(Regex("[^a-z0-9]"), "")
+                    if (cleanName == cleanTitle || cleanName.startsWith(cleanTitle) || cleanTitle.startsWith(cleanName)) {
+                        return id
+                    }
+                }
+                items.firstOrNull()?.jsonObject?.get("id")?.jsonPrimitive?.intOrNull
+            } else null
+        } catch (e: Exception) {
+            Log.e("SteamClient", "Error searching AppID for '$title': ${e.message}")
+            null
+        }
+    }
+
+    /**
      * Fetches the current price of a Steam app in EUR (German region).
      * Prices are returned in major units (e.g. 14.99).
      * Returns null if no price is available (e.g. free-to-play or fetch failure).
