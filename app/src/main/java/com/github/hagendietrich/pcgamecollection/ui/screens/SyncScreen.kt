@@ -1,16 +1,24 @@
 package com.github.hagendietrich.pcgamecollection.ui.screens
 
+import android.content.Intent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -23,6 +31,9 @@ import com.github.hagendietrich.pcgamecollection.ui.components.UbisoftAuthDialog
 import com.github.hagendietrich.pcgamecollection.ui.components.UnmatchedGameRow
 import com.github.hagendietrich.pcgamecollection.ui.viewmodel.SyncUiState
 import com.github.hagendietrich.pcgamecollection.ui.viewmodel.SyncViewModel
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @Composable
 fun SyncScreen(
@@ -30,6 +41,7 @@ fun SyncScreen(
     onNavigate: (String) -> Unit,
     onBack: () -> Unit
 ) {
+    val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsState()
     val lastSteamId by viewModel.lastSteamId.collectAsState()
     val lastGogUsername by viewModel.lastGogUsername.collectAsState()
@@ -40,13 +52,33 @@ fun SyncScreen(
     val epicEmail by viewModel.epicEmail.collectAsState()
     val epicPassword by viewModel.epicPassword.collectAsState()
 
+    val syncDeviceName by viewModel.syncDeviceName.collectAsState()
+    val syncFolderUri by viewModel.syncFolderUri.collectAsState()
+    val autoSyncEnabled by viewModel.autoSyncEnabled.collectAsState()
+    val lastSyncTimestamp by viewModel.lastSyncTimestamp.collectAsState()
+
     var steamUrl by remember(lastSteamId) { mutableStateOf(lastSteamId) }
     var gogUsername by remember(lastGogUsername) { mutableStateOf(lastGogUsername) }
     
     var epicEmailInput by remember(epicEmail) { mutableStateOf(epicEmail) }
     var epicPasswordInput by remember(epicPassword) { mutableStateOf(epicPassword) }
+    var deviceNameInput by remember(syncDeviceName) { mutableStateOf(syncDeviceName) }
 
     var platformForIgnoreList by remember { mutableStateOf<String?>(null) }
+
+    val folderLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree()
+    ) { uri ->
+        uri?.let {
+            try {
+                val takeFlags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                context.contentResolver.takePersistableUriPermission(it, takeFlags)
+            } catch (e: Exception) {
+                // Direct path fallback
+            }
+            viewModel.updateSyncFolderUri(it.toString())
+        }
+    }
 
     if (showEpicLogin) {
         EpicAuthDialog(
@@ -188,6 +220,102 @@ fun SyncScreen(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.4f))
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("Syncthing / Shared Folder Sync", style = MaterialTheme.typography.titleMedium)
+                                Icon(Icons.Default.Folder, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                            }
+
+                            Text(
+                                "Sync your collection bidirectionally with another device (Phone / Bazzite Waydroid) using a local folder managed by Syncthing.",
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier.padding(vertical = 8.dp)
+                            )
+
+                            OutlinedTextField(
+                                value = deviceNameInput,
+                                onValueChange = {
+                                    deviceNameInput = it
+                                    viewModel.updateSyncDeviceName(it)
+                                },
+                                label = { Text("This Device Name") },
+                                placeholder = { Text("e.g. Pixel Phone or Waydroid Bazzite") },
+                                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
+                            )
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+                                    Text("Sync Folder", style = MaterialTheme.typography.labelMedium)
+                                    Text(
+                                        text = syncFolderUri ?: "No folder selected",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = if (syncFolderUri != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                                        maxLines = 1
+                                    )
+                                }
+                                OutlinedButton(onClick = { folderLauncher.launch(null) }) {
+                                    Text("Select Folder")
+                                }
+                            }
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("Auto-Sync on App Open", style = MaterialTheme.typography.bodyMedium)
+                                    Text(
+                                        "Automatically merge changes from the shared folder when the app opens or resumes",
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+                                }
+                                Switch(
+                                    checked = autoSyncEnabled,
+                                    onCheckedChange = { viewModel.updateAutoSyncEnabled(it) }
+                                )
+                            }
+
+                            if (lastSyncTimestamp > 0L) {
+                                val dateStr = remember(lastSyncTimestamp) {
+                                    SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(Date(lastSyncTimestamp))
+                                }
+                                Text(
+                                    "Last synced: $dateStr",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.secondary,
+                                    modifier = Modifier.padding(top = 4.dp)
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            Button(
+                                onClick = { viewModel.triggerFolderSync(context) },
+                                modifier = Modifier.align(Alignment.End),
+                                enabled = uiState !is SyncUiState.Loading && !syncFolderUri.isNullOrBlank()
+                            ) {
+                                Icon(Icons.Default.Sync, contentDescription = null)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Sync Now")
+                            }
+                        }
+                    }
+                }
+
                 item {
                     Button(
                         onClick = { viewModel.syncAllAccounts() },

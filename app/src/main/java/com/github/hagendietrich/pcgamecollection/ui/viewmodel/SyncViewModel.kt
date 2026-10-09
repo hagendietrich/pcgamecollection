@@ -1,5 +1,6 @@
 package com.github.hagendietrich.pcgamecollection.ui.viewmodel
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.github.hagendietrich.pcgamecollection.data.api.models.IgdbGame
@@ -12,6 +13,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -50,12 +52,61 @@ class SyncViewModel(
     val ignoredGames: StateFlow<List<IgnoredGame>> = gameRepository.getIgnoredGames()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    val syncDeviceName: StateFlow<String> = settingsRepository.syncDeviceName
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "Device")
+
+    val syncFolderUri: StateFlow<String?> = settingsRepository.syncFolderUri
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    val autoSyncEnabled: StateFlow<Boolean> = settingsRepository.autoSyncEnabled
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
+    val lastSyncTimestamp: StateFlow<Long> = settingsRepository.lastSyncTimestamp
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0L)
+
     init {
         viewModelScope.launch {
             settingsRepository.lastSteamId.firstOrNull()?.let { _lastSteamId.value = it }
             settingsRepository.lastGogUsername.firstOrNull()?.let { _lastGogUsername.value = it }
             settingsRepository.epicEmail.firstOrNull()?.let { _epicEmail.value = it }
             settingsRepository.getEpicPassword()?.let { _epicPassword.value = it }
+        }
+    }
+
+    fun updateSyncDeviceName(name: String) {
+        viewModelScope.launch {
+            settingsRepository.saveSyncDeviceName(name)
+        }
+    }
+
+    fun updateSyncFolderUri(uri: String?) {
+        viewModelScope.launch {
+            settingsRepository.saveSyncFolderUri(uri)
+        }
+    }
+
+    fun updateAutoSyncEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsRepository.saveAutoSyncEnabled(enabled)
+        }
+    }
+
+    fun triggerFolderSync(context: Context) {
+        syncJob?.cancel()
+        syncJob = viewModelScope.launch {
+            val folderUri = syncFolderUri.value ?: return@launch
+            val deviceId = settingsRepository.syncDeviceId.first()
+            val deviceName = syncDeviceName.value
+
+            _uiState.value = SyncUiState.Loading(0.5f, "Syncing collection snapshot with shared folder...")
+
+            val result = gameRepository.performFolderSync(context, folderUri, deviceId, deviceName)
+
+            if (result.success) {
+                _uiState.value = SyncUiState.Success(result.message)
+            } else {
+                _uiState.value = SyncUiState.Error(result.message)
+            }
         }
     }
 

@@ -42,6 +42,8 @@ class GameListViewModelTest {
         every { settingsRepository.libraryFilters } returns flowOf(LibraryFilters())
         every { settingsRepository.columnCount } returns flowOf(3)
         every { settingsRepository.currentSearchTerm } returns flowOf("")
+        every { settingsRepository.savedViews } returns flowOf(emptyList())
+        coEvery { settingsRepository.migrateSavedViewsIfNeeded() } returns false
         coEvery { settingsRepository.updateCurrentSearchTerm(any()) } just runs
         every { gameRepository.normalizeDate(any()) } answers { it.invocation.args[0] as String? }
         

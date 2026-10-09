@@ -16,6 +16,7 @@ class GameRepositoryTest {
     private val gameDao = mockk<GameDao>()
     private val ignoredGameDao = mockk<IgnoredGameDao>()
     private val wishlistGameDao = mockk<WishlistGameDao>()
+    private val deletedGameDao = mockk<com.github.hagendietrich.pcgamecollection.data.dao.DeletedGameDao>()
     private val igdbClient = mockk<IgdbClient>()
     private val steamClient = mockk<SteamClient>()
     private val gogClient = mockk<GogClient>()
@@ -32,6 +33,7 @@ class GameRepositoryTest {
             gameDao,
             ignoredGameDao,
             wishlistGameDao,
+            deletedGameDao,
             igdbClient,
             steamClient,
             gogClient,

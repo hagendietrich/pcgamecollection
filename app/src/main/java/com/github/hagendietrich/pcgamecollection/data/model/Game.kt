@@ -49,7 +49,8 @@ data class Game(
     val achievements: List<Achievement> = emptyList(),
     val achievementsSource: String? = null, // "Steam", "GOG", "Epic"
     val dateAdded: Long = System.currentTimeMillis(), // Timestamp when the game was added to the database
-    val bundleIgdbIds: List<Long> = emptyList()
+    val bundleIgdbIds: List<Long> = emptyList(),
+    val lastModified: Long = System.currentTimeMillis()
 )
 
 fun Game.getCategoryDisplay(): String =

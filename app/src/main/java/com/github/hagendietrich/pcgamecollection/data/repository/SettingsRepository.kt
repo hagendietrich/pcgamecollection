@@ -1,8 +1,10 @@
 package com.github.hagendietrich.pcgamecollection.data.repository
 
 import android.content.Context
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
@@ -45,6 +47,11 @@ class SettingsRepository(private val context: Context) {
         val SAVED_SEARCH_TERM = stringPreferencesKey("saved_search_term")
         val SAVED_COLUMN_COUNT = intPreferencesKey("save_column_count")
         val SAVED_VIEWS = stringPreferencesKey("saved_views")
+        val SYNC_DEVICE_ID = stringPreferencesKey("sync_device_id")
+        val SYNC_DEVICE_NAME = stringPreferencesKey("sync_device_name")
+        val SYNC_FOLDER_URI = stringPreferencesKey("sync_folder_uri")
+        val AUTO_SYNC_ENABLED = booleanPreferencesKey("auto_sync_enabled")
+        val LAST_SYNC_TIMESTAMP = longPreferencesKey("last_sync_timestamp")
     }
 
     companion object {
@@ -458,6 +465,65 @@ class SettingsRepository(private val context: Context) {
         context.dataStore.edit { preferences ->
             preferences.remove(PreferencesKeys.CLIENT_ID)
             preferences.remove(PreferencesKeys.CLIENT_SECRET)
+        }
+    }
+
+    val syncDeviceId: Flow<String> = context.dataStore.data.map { preferences ->
+        var id = preferences[PreferencesKeys.SYNC_DEVICE_ID]
+        if (id.isNullOrBlank()) {
+            id = java.util.UUID.randomUUID().toString()
+            saveSyncDeviceId(id)
+        }
+        id
+    }
+
+    suspend fun saveSyncDeviceId(id: String) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.SYNC_DEVICE_ID] = id
+        }
+    }
+
+    val syncDeviceName: Flow<String> = context.dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.SYNC_DEVICE_NAME] ?: android.os.Build.MODEL ?: "Device"
+    }
+
+    suspend fun saveSyncDeviceName(name: String) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.SYNC_DEVICE_NAME] = name.trim()
+        }
+    }
+
+    val syncFolderUri: Flow<String?> = context.dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.SYNC_FOLDER_URI]
+    }
+
+    suspend fun saveSyncFolderUri(uri: String?) {
+        context.dataStore.edit { preferences ->
+            if (uri != null) {
+                preferences[PreferencesKeys.SYNC_FOLDER_URI] = uri
+            } else {
+                preferences.remove(PreferencesKeys.SYNC_FOLDER_URI)
+            }
+        }
+    }
+
+    val autoSyncEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.AUTO_SYNC_ENABLED] ?: false
+    }
+
+    suspend fun saveAutoSyncEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.AUTO_SYNC_ENABLED] = enabled
+        }
+    }
+
+    val lastSyncTimestamp: Flow<Long> = context.dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.LAST_SYNC_TIMESTAMP] ?: 0L
+    }
+
+    suspend fun saveLastSyncTimestamp(timestamp: Long) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.LAST_SYNC_TIMESTAMP] = timestamp
         }
     }
 }

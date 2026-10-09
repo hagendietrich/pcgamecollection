@@ -1,24 +1,30 @@
 package com.github.hagendietrich.pcgamecollection.data.repository
 
+import android.content.Context
+import android.util.Log
 import com.github.hagendietrich.pcgamecollection.data.api.BattleNetClient
 import com.github.hagendietrich.pcgamecollection.data.api.EpicClient
-import android.util.Log
 import com.github.hagendietrich.pcgamecollection.data.api.GogClient
 import com.github.hagendietrich.pcgamecollection.data.api.HltbClient
 import com.github.hagendietrich.pcgamecollection.data.api.IgdbClient
 import com.github.hagendietrich.pcgamecollection.data.api.SteamClient
 import com.github.hagendietrich.pcgamecollection.data.api.UbisoftClient
 import com.github.hagendietrich.pcgamecollection.data.api.models.*
+import com.github.hagendietrich.pcgamecollection.data.dao.DeletedGameDao
 import com.github.hagendietrich.pcgamecollection.data.dao.GameDao
 import com.github.hagendietrich.pcgamecollection.data.dao.IgnoredGameDao
 import com.github.hagendietrich.pcgamecollection.data.dao.WishlistGameDao
 import com.github.hagendietrich.pcgamecollection.data.model.Achievement
 import com.github.hagendietrich.pcgamecollection.data.model.BackupData
 import com.github.hagendietrich.pcgamecollection.data.model.CompletionStatus
+import com.github.hagendietrich.pcgamecollection.data.model.DeletedGame
 import com.github.hagendietrich.pcgamecollection.data.model.Game
 import com.github.hagendietrich.pcgamecollection.data.model.IgnoredGame
 import com.github.hagendietrich.pcgamecollection.data.model.PlatformPrice
+import com.github.hagendietrich.pcgamecollection.data.model.SyncSnapshot
 import com.github.hagendietrich.pcgamecollection.data.model.WishlistGame
+import com.github.hagendietrich.pcgamecollection.data.sync.SyncMergeEngine
+import com.github.hagendietrich.pcgamecollection.data.sync.SyncthingManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -43,10 +49,19 @@ data class SyncResult(
     val unmatchedGames: List<UnmatchedGame> = emptyList()
 )
 
+data class FolderSyncResult(
+    val success: Boolean,
+    val message: String,
+    val newGamesCount: Int = 0,
+    val updatedGamesCount: Int = 0,
+    val remoteSnapshotsProcessed: Int = 0
+)
+
 class GameRepository(
     private val gameDao: GameDao,
     private val ignoredGameDao: IgnoredGameDao,
     private val wishlistGameDao: WishlistGameDao,
+    private val deletedGameDao: DeletedGameDao,
     private val igdbClient: IgdbClient,
     private val steamClient: SteamClient,
     private val gogClient: GogClient,
@@ -1240,12 +1255,14 @@ class GameRepository(
         gameDao.updateGame(updatedGame)
     }
 
-    suspend fun deleteGame(game: Game) {
+    suspend fun deleteGame(game: Game) = withContext(Dispatchers.IO) {
         gameDao.deleteGame(game)
+        deletedGameDao.insertDeletedGame(DeletedGame(igdbId = game.igdbId, title = game.title))
     }
 
     suspend fun deleteGameAndIgnore(game: Game) = withContext(Dispatchers.IO) {
         gameDao.deleteGame(game)
+        deletedGameDao.insertDeletedGame(DeletedGame(igdbId = game.igdbId, title = game.title))
         
         // Add to ignore list for each applicable platform
         if (game.platforms.contains("Steam") && game.sourceIds.containsKey("STEAM")) {
@@ -2477,6 +2494,128 @@ class GameRepository(
             }
         } catch (e: Exception) {
             Log.e("GameRepository", "Achievement Fetch [TA]: Error: ${e.message}")
+        }
+    }
+
+    /**
+     * Performs a 2-way sync using the configured shared Syncthing folder:
+     * 1. Reads remote snapshot JSON files from Syncthing folder.
+     * 2. Merges remote snapshots with local Room DB via SyncMergeEngine.
+     * 3. Writes an updated local snapshot JSON file (`pcgc_sync_<deviceId>.json`) to the folder.
+     */
+    suspend fun performFolderSync(
+        context: Context,
+        folderUriOrPath: String,
+        deviceId: String,
+        deviceName: String
+    ): FolderSyncResult = withContext(Dispatchers.IO) {
+        if (folderUriOrPath.isBlank() || deviceId.isBlank()) {
+            return@withContext FolderSyncResult(false, "Sync folder or Device ID is missing.")
+        }
+
+        try {
+            val syncthingManager = SyncthingManager(context)
+
+            // Step 1: Read all remote snapshots and get local deletion tombstones
+            val remoteSnapshots: List<SyncSnapshot> = syncthingManager.readRemoteSnapshots(folderUriOrPath, deviceId)
+            val localDeletedGames = deletedGameDao.getAllDeletedGamesOnce()
+
+            var totalNewGames = 0
+            var totalUpdatedGames = 0
+            var totalDeletedGames = 0
+
+            // Step 2: Merge remote snapshots into local Room database
+            var index = 0
+            while (index < remoteSnapshots.size) {
+                val remoteSnapshot = remoteSnapshots[index]
+                index++
+                val currentLocalGames = gameDao.getAllGames().first()
+                val currentLocalIgnored = ignoredGameDao.getAllIgnoredGames().first()
+                val currentLocalWishlist = wishlistGameDao.getAllWishlistGames().first()
+
+                val mergeResult = SyncMergeEngine.mergeSnapshot(
+                    localGames = currentLocalGames,
+                    localIgnoredGames = currentLocalIgnored,
+                    localWishlistGames = currentLocalWishlist,
+                    remoteSnapshot = remoteSnapshot
+                )
+
+                if (mergeResult.gamesToInsertOrUpdate.isNotEmpty()) {
+                    gameDao.insertGames(mergeResult.gamesToInsertOrUpdate)
+                }
+                if (mergeResult.gamesToDelete.isNotEmpty()) {
+                    for (gameToDelete in mergeResult.gamesToDelete) {
+                        gameDao.deleteGame(gameToDelete)
+                    }
+                }
+                if (mergeResult.ignoredGamesToInsertOrUpdate.isNotEmpty()) {
+                    ignoredGameDao.insertIgnoredGames(mergeResult.ignoredGamesToInsertOrUpdate)
+                }
+                if (mergeResult.wishlistGamesToInsertOrUpdate.isNotEmpty()) {
+                    for (wishlistGame in mergeResult.wishlistGamesToInsertOrUpdate) {
+                        wishlistGameDao.insertWishlistGame(wishlistGame)
+                    }
+                }
+
+                totalNewGames += mergeResult.newGamesCount
+                totalUpdatedGames += mergeResult.updatedGamesCount
+                totalDeletedGames += mergeResult.deletedGamesCount
+            }
+
+            // Clear processed local deletion tombstones
+            deletedGameDao.clearAll()
+
+            // Step 3: Export updated local database snapshot to folder
+            val latestGames = gameDao.getAllGames().first()
+            val latestIgnored = ignoredGameDao.getAllIgnoredGames().first()
+            val latestWishlist = wishlistGameDao.getAllWishlistGames().first()
+
+            val localSnapshot = SyncSnapshot(
+                deviceId = deviceId,
+                deviceName = deviceName,
+                timestamp = System.currentTimeMillis(),
+                games = latestGames,
+                ignoredGames = latestIgnored,
+                wishlistGames = latestWishlist,
+                deletedRecords = localDeletedGames
+            )
+
+            val writeSuccess = syncthingManager.writeLocalSnapshot(folderUriOrPath, localSnapshot)
+
+            if (!writeSuccess) {
+                return@withContext FolderSyncResult(
+                    success = false,
+                    message = "Merged ${remoteSnapshots.size} remote snapshot(s), but failed to write local snapshot. Please check folder permissions.",
+                    newGamesCount = totalNewGames,
+                    updatedGamesCount = totalUpdatedGames,
+                    remoteSnapshotsProcessed = remoteSnapshots.size
+                )
+            }
+
+            val msg = StringBuilder("Folder sync complete.")
+            if (remoteSnapshots.isNotEmpty()) {
+                msg.append(" Processed ${remoteSnapshots.size} remote device(s).")
+                if (totalNewGames > 0) msg.append(" Added $totalNewGames new game(s).")
+                if (totalUpdatedGames > 0) msg.append(" Updated $totalUpdatedGames game(s).")
+                if (totalDeletedGames > 0) msg.append(" Removed $totalDeletedGames deleted game(s).")
+            } else {
+                msg.append(" Exported local snapshot.")
+            }
+
+            // Record last sync timestamp
+            settingsRepository.saveLastSyncTimestamp(System.currentTimeMillis())
+
+            FolderSyncResult(
+                success = true,
+                message = msg.toString(),
+                newGamesCount = totalNewGames,
+                updatedGamesCount = totalUpdatedGames,
+                remoteSnapshotsProcessed = remoteSnapshots.size
+            )
+
+        } catch (e: Exception) {
+            Log.e("GameRepository", "Folder sync error", e)
+            FolderSyncResult(false, "Folder sync failed: ${e.message}")
         }
     }
 }
